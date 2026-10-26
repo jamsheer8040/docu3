@@ -207,16 +207,18 @@ exports.getTopCustomers = async (req, res) => {
 exports.getProfitReportDetails = async (req, res) => {
     try {
         const dateWhere = getReportWhere(req);
+        const commissionEnabled=await require('../utils/commissionFeature').isEnabled(req.user.tenant_id);
         let { page = 1, limit = 50 } = req.query;
         limit = parseInt(limit);
         const offset = (page - 1) * limit;
 
         const { count, rows } = await Invoice.findAndCountAll({
-            where: { [Op.or]: [{ status: 'Paid' }, { status: 'Partially Paid' }, { status: 'Sent' }, { status: 'Issued' }], ...dateWhere },
+            where: { status: { [Op.ne]: 'Cancelled' }, ...dateWhere },
             attributes: [
                 'id', 'invoice_number', 'status', 'created_at',
-                'subtotal', 'cost_total', 'total', 'paid_amount',
-                [literal('subtotal - cost_total'), 'gross_profit'],
+                'subtotal', 'cost_total', 'total', 'paid_amount', 'discount',
+                [literal( '(SELECT COALESCE(SUM(entry.amount), 0) FROM commission_entries AS entry WHERE entry.invoice_id = Invoice.id AND entry.tenant_id = Invoice.tenant_id AND entry.voided_at IS NULL AND entry.approval_status = \'Approved\')'), 'commission'],
+                [literal( '(SELECT COALESCE(SUM(item.service_charge * item.quantity), 0) FROM invoice_items AS item WHERE item.invoice_id = Invoice.id AND item.tenant_id = Invoice.tenant_id) - COALESCE(Invoice.discount,0) - (SELECT COALESCE(SUM(entry.amount),0) FROM commission_entries AS entry WHERE entry.invoice_id=Invoice.id AND entry.tenant_id=Invoice.tenant_id AND entry.voided_at IS NULL AND entry.approval_status=\'Approved\')'), 'gross_profit'],
             ],
             include: [{ model: Customer, attributes: ['name'] }],
             order: [['created_at', 'DESC']],
@@ -224,18 +226,18 @@ exports.getProfitReportDetails = async (req, res) => {
             offset
         });
 
-        const overheadCosts = await Expense.sum('paid_amount', {
-            where: { [Op.or]: [{ status: 'Paid' }, { status: 'Partially Paid' }], ...dateWhere }
-        });
+        const profitTotals = await require('../utils/profitTotals')(dateWhere, dateWhere);
 
         res.json({
             success: true,
             data: {
-                invoices: rows,
+                invoices: rows.map(row=>{const value=row.toJSON();if(!commissionEnabled)delete value.commission;return value;}),
+                commission_enabled:commissionEnabled,
                 total_invoices: count,
                 total_pages: Math.ceil(count / limit),
                 current_page: parseInt(page),
-                overhead_costs: overheadCosts || 0
+                overhead_costs: profitTotals.expenses,
+                totals: profitTotals
             }
         });
     } catch (err) {

@@ -268,7 +268,7 @@ exports.createDocument = async (req, res) => {
   }
 
   try {
-    const data = { ...req.body };
+    const { id, tenant_id, file_path, ...data } = req.body;
     if (req.file) {
       data.file_path = `/uploads/documents/${req.file.filename}`;
     }
@@ -327,7 +327,7 @@ exports.updateDocument = async (req, res) => {
       }
     }
 
-    const { id: docId, tenant_id: dTenant, ...data } = req.body;
+    const { id: docId, tenant_id: dTenant, file_path, ...data } = req.body;
     if (req.user?.Role?.type === 'CustomerPortal') {
       const userCustomerIds = req.user.LinkedCustomers?.map(c => c.id) || [];
       if (data.customer_id && !userCustomerIds.includes(parseInt(data.customer_id))) {

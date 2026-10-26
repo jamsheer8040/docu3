@@ -15,6 +15,11 @@ const Lead = sequelize.define('Lead', {
     type: DataTypes.STRING(150),
     allowNull: false
   },
+  lead_type: {
+    type: DataTypes.STRING(10),
+    allowNull: true,
+    validate: { isIn: [['Person', 'Company']] }
+  },
   email: {
     type: DataTypes.STRING(100),
     allowNull: true
@@ -24,7 +29,7 @@ const Lead = sequelize.define('Lead', {
     allowNull: false
   },
   status: {
-    type: DataTypes.ENUM('New', 'Contacted', 'Qualified', 'Lost', 'Won'),
+    type: DataTypes.ENUM('New', 'Contacted', 'Qualified', 'Lost', 'Won', 'Follow-up', 'Archived'),
     allowNull: false,
     defaultValue: 'New'
   },
@@ -32,6 +37,9 @@ const Lead = sequelize.define('Lead', {
     type: DataTypes.STRING(100),
     allowNull: true
   },
+  archive_reason: { type: DataTypes.TEXT, allowNull: true },
+  next_follow_up_date: { type: DataTypes.DATEONLY, allowNull: true },
+  follow_up_scheduled_at: { type: DataTypes.DATE, allowNull: true },
   notes: {
     type: DataTypes.TEXT,
     allowNull: true
@@ -45,7 +53,7 @@ const Lead = sequelize.define('Lead', {
     allowNull: true
   },
   service_id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.BIGINT,
     allowNull: true
   },
   created_by: {

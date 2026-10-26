@@ -11,6 +11,7 @@ const Role = sequelize.define('Role', {
     type: DataTypes.STRING(100),
     allowNull: false
   },
+  dashboard_template_id:{type:DataTypes.INTEGER,allowNull:true},
   permissions: {
     type: DataTypes.JSON,
     allowNull: false,
@@ -27,7 +28,8 @@ const Role = sequelize.define('Role', {
       settings: { read: false, write: false, delete: false },
       financials: { read: false, write: false, delete: false },
       management: { read: false, write: false, delete: false },
-      tools: { read: false, write: false, delete: false }
+      tools: { read: false, write: false, delete: false },
+      staff: { read: false, write: false, delete: false }
     }
   },
   type: {

@@ -1,4 +1,5 @@
 const { Role, User } = require('../models');
+const { normalizePermissions } = require('../utils/permissionRules');
 
 exports.getRoles = async (req, res) => {
   try {
@@ -16,7 +17,7 @@ exports.getRoles = async (req, res) => {
     });
 
     // 2. Fetch User counts per role
-    const userCounts = await User.findAll({
+    const userCounts = await require('../utils/recordAccess').internalRead(() => User.findAll({
         where: { tenant_id: req.user.tenant_id },
         attributes: [
             'role_id',
@@ -24,11 +25,14 @@ exports.getRoles = async (req, res) => {
         ],
         group: ['role_id'],
         raw: true
-    });
+    }));
 
     // 3. Map counts back to role objects
     const data = roles.map(role => {
         const roleJson = role.toJSON();
+        if (typeof roleJson.permissions === 'string') {
+          try { roleJson.permissions = JSON.parse(roleJson.permissions); } catch (e) { roleJson.permissions = {}; }
+        }
         const countData = userCounts.find(uc => uc.role_id === role.id);
         roleJson.UserCount = countData ? parseInt(countData.count) : 0;
         
@@ -44,7 +48,8 @@ exports.getRoles = async (req, res) => {
                 wallet: { read: true, write: true, delete: true },
                 reports: { read: true, write: true, delete: true },
                 settings: { read: true, write: true, delete: true },
-                financials: { read: true, write: true, delete: true }
+                financials: { read: true, write: true, delete: true },
+                staff: { read: true, write: true, delete: true }
             };
         } else if (roleJson.type === 'CustomerPortal') {
             // Customer Portal roles can only have documents permissions
@@ -63,7 +68,8 @@ exports.getRoles = async (req, res) => {
                 wallet: { read: false, write: false, delete: false },
                 reports: { read: false, write: false, delete: false },
                 settings: { read: false, write: false, delete: false },
-                financials: { read: false, write: false, delete: false }
+                financials: { read: false, write: false, delete: false },
+                staff: { read: false, write: false, delete: false }
             };
         }
         return roleJson;
@@ -78,7 +84,8 @@ exports.getRoles = async (req, res) => {
 
 exports.getRoleById = async (req, res) => {
   try {
-    const role = await Role.findByPk(req.params.id);
+    const { Op } = require('sequelize');
+    const role = await Role.findOne({ where: { id: req.params.id, tenant_id: { [Op.or]: [null, req.user.tenant_id] }, ...(req.user.Role?.name === 'Developer' ? {} : { name: { [Op.ne]: 'Developer' } }) } });
     if (!role) return res.status(404).json({ success: false, message: 'Role not found.' });
     res.json({ success: true, data: role });
   } catch (err) {
@@ -89,6 +96,8 @@ exports.getRoleById = async (req, res) => {
 exports.createRole = async (req, res) => {
   try {
     const { name, type = 'Internal', permissions } = req.body;
+    if (!name?.trim() || ['admin', 'developer'].includes(name.trim().toLowerCase()) || !['Internal', 'CustomerPortal'].includes(type)) return res.status(400).json({ success: false, message: 'Choose a valid, non-system role name and type.' });
+    if (permissions) { try { normalizePermissions(permissions); } catch (error) { return res.status(400).json({ success: false, message: error.message }); } }
     let finalPerms = permissions || {
       dashboard: { read: type === 'Internal', write: type === 'Internal', delete: type === 'Internal' },
       customers: { read: false, write: false, delete: false },
@@ -99,7 +108,8 @@ exports.createRole = async (req, res) => {
       wallet: { read: false, write: false, delete: false },
       reports: { read: false, write: false, delete: false },
       settings: { read: false, write: false, delete: false },
-      financials: { read: false, write: false, delete: false }
+      financials: { read: false, write: false, delete: false },
+      staff: { read: false, write: false, delete: false }
     };
 
     if (type === 'CustomerPortal') {
@@ -118,11 +128,15 @@ exports.createRole = async (req, res) => {
         wallet: { read: false, write: false, delete: false },
         reports: { read: false, write: false, delete: false },
         settings: { read: false, write: false, delete: false },
-        financials: { read: false, write: false, delete: false }
+        financials: { read: false, write: false, delete: false },
+        staff: { read: false, write: false, delete: false }
       };
     }
 
-    const role = await Role.create({ name, type, permissions: finalPerms, tenant_id: req.user.tenant_id });
+    let dashboard_template_id;
+    try { dashboard_template_id=await require('../utils/dashboardTemplates').templateId(req.body.dashboard_template_id,req.user.tenant_id,type); }
+    catch(error){return res.status(400).json({success:false,message:error.message});}
+    const role = await Role.create({ name: name.trim(), type, permissions: normalizePermissions(finalPerms), tenant_id: req.user.tenant_id, dashboard_template_id });
     res.status(201).json({ success: true, data: role });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Error creating role.' });
@@ -132,7 +146,7 @@ exports.createRole = async (req, res) => {
 exports.updateRole = async (req, res) => {
   try {
     const { id } = req.params;
-    const updateData = req.body;
+    const updateData = Object.fromEntries(['name', 'type', 'permissions'].filter(key => req.body[key] !== undefined).map(key => [key, req.body[key]]));
     
     console.log(`[Role Controller] Attempting update for Role ID: ${id}`);
     
@@ -141,6 +155,10 @@ exports.updateRole = async (req, res) => {
       console.warn(`[Role Controller] Role ID: ${id} not found.`);
       return res.status(404).json({ success: false, message: 'Role not found.' });
     }
+    if (['Admin', 'Developer'].includes(role.name)) return res.status(400).json({ success: false, message: 'System administrator permissions are fixed.' });
+    if (updateData.name && ['admin', 'developer'].includes(updateData.name.trim().toLowerCase())) return res.status(400).json({ success: false, message: 'System role names are reserved.' });
+    if (updateData.type && !['Internal', 'CustomerPortal'].includes(updateData.type)) return res.status(400).json({ success: false, message: 'Invalid role type.' });
+    if (updateData.permissions) { try { updateData.permissions = normalizePermissions(updateData.permissions); } catch (error) { return res.status(400).json({ success: false, message: error.message }); } }
 
     // PROTECT SYSTEM ROLES FROM RENAME
     if ((role.name === 'Admin' || role.name === 'Staff') && updateData.name && updateData.name !== role.name) {
@@ -165,7 +183,8 @@ exports.updateRole = async (req, res) => {
         wallet: { read: false, write: false, delete: false },
         reports: { read: false, write: false, delete: false },
         settings: { read: false, write: false, delete: false },
-        financials: { read: false, write: false, delete: false }
+        financials: { read: false, write: false, delete: false },
+        staff: { read: false, write: false, delete: false }
       };
     }
 
@@ -199,7 +218,7 @@ exports.deleteRole = async (req, res) => {
     }
 
     // CHECK FOR ASSIGNED USERS
-    const userCount = await User.count({ where: { role_id: role.id, tenant_id: req.user.tenant_id } });
+    const userCount = await require('../utils/recordAccess').internalRead(() => User.count({ where: { role_id: role.id, tenant_id: req.user.tenant_id } }));
     if (userCount > 0) {
         return res.status(400).json({ success: false, message: `Cannot delete role "${role.name}" because it has ${userCount} users assigned.` });
     }

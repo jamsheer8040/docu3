@@ -1,61 +1,42 @@
 <template>
-  <v-container fluid class="pa-2 pa-sm-4 pa-md-6">
-    <!-- Top KPI Cards (Ethereal Neomorphism Style) -->
-    <v-row class="mb-6">
-      <v-col cols="12" sm="6" md="3">
-        <v-card class="glass-card-ethereal pa-5 d-flex flex-column" variant="flat">
-          <div class="d-flex align-center justify-space-between mb-2">
-            <div class="icon-glow-base icon-glow-purple" style="width: 56px; height: 56px;">
-              <v-icon icon="mdi-account-group" color="white" size="28"></v-icon>
-            </div>
-            <div class="text-right">
-              <div class="text-caption font-weight-bold text-blue-grey-darken-1">Total Clients</div>
-              <div class="text-h4 font-weight-black text-blue-grey-darken-4">{{ dashboardStore.stats?.total_customers || 0 }}</div>
-            </div>
-          </div>
-        </v-card>
+  <v-container fluid class="pa-6">
+    <!-- Header -->
+    <v-row class="mb-6 align-center">
+      <v-col cols="12" sm="7" md="8">
+        <div class="text-caption text-uppercase font-weight-bold opacity-60 color-primary mb-1" style="letter-spacing: 0.08em;">
+          CUSTOMERS
+        </div>
+        <h1 class="text-h4 font-weight-black color-primary">
+          Client Directory
+        </h1>
+        <p class="text-subtitle-1 text-grey-darken-1 mt-1">
+          Manage client profiles, contact records, and active business relationships.
+        </p>
       </v-col>
-
-      <v-col cols="12" sm="6" md="3">
-        <v-card class="glass-card-ethereal pa-5 d-flex flex-column" variant="flat">
-          <div class="d-flex align-center justify-space-between mb-2">
-            <div class="icon-glow-base icon-glow-green" style="width: 56px; height: 56px;">
-              <v-icon icon="mdi-check-circle-outline" color="white" size="28"></v-icon>
-            </div>
-            <div class="text-right">
-              <div class="text-caption font-weight-bold text-blue-grey-darken-1">Active Now</div>
-              <div class="text-h4 font-weight-black text-blue-grey-darken-4">{{ dashboardStore.stats?.active_customers || 0 }}</div>
-            </div>
-          </div>
-        </v-card>
-      </v-col>
-
-      <v-col cols="12" sm="6" md="3">
-        <v-card class="glass-card-ethereal pa-5 d-flex flex-column" variant="flat">
-          <div class="d-flex align-center justify-space-between mb-2">
-            <div class="icon-glow-base icon-glow-blue" style="width: 56px; height: 56px;">
-              <v-icon icon="mdi-file-document-outline" color="white" size="28"></v-icon>
-            </div>
-            <div class="text-right">
-              <div class="text-caption font-weight-bold text-blue-grey-darken-1">Active Docs</div>
-              <div class="text-h4 font-weight-black text-blue-grey-darken-4">{{ dashboardStore.stats?.active_documents || 0 }}</div>
-            </div>
-          </div>
-        </v-card>
-      </v-col>
-
-      <v-col cols="12" sm="6" md="3">
-        <v-card class="glass-card-ethereal pa-5 d-flex flex-column" variant="flat">
-          <div class="d-flex align-center justify-space-between mb-2">
-            <div class="icon-glow-base icon-glow-orange" style="width: 56px; height: 56px;">
-              <v-icon icon="mdi-alert-outline" color="white" size="28"></v-icon>
-            </div>
-            <div class="text-right">
-              <div class="text-caption font-weight-bold text-blue-grey-darken-1">Action Required</div>
-              <div class="text-h4 font-weight-black text-blue-grey-darken-4">{{ dashboardStore.stats?.critical_count || 0 }}</div>
-            </div>
-          </div>
-        </v-card>
+      <v-col cols="12" sm="5" md="4" class="d-flex align-center justify-sm-end gap-3 flex-wrap">
+        <v-btn
+          variant="outlined"
+          color="grey-darken-2"
+          prepend-icon="mdi-download-outline"
+          rounded="lg"
+          height="44"
+          class="px-5 font-weight-bold text-capitalize bg-white"
+          @click="downloadTemplate"
+        >
+          Template
+        </v-btn>
+        <v-btn
+          v-if="auth.can('customers', 'create')"
+          color="primary"
+          prepend-icon="mdi-plus"
+          rounded="lg"
+          elevation="2"
+          height="44"
+          class="px-6 font-weight-bold text-capitalize"
+          @click="openCreateDialog"
+        >
+          Add Customer
+        </v-btn>
       </v-col>
     </v-row>
 
@@ -69,74 +50,69 @@
       icon="mdi-alert-octagon"
       border="start"
     >
-      You have reached your workspace limit of <strong>{{ auth.user.Tenant.Plan.max_customers }}</strong> customers on the {{ auth.user.Tenant.Plan.name }} plan. You cannot add any more customers until you upgrade.
+      You have reached your workspace limit of <strong>{{ auth.user.Tenant.Plan.max_customers }}</strong> customers on the {{ auth.user.Tenant.Plan.name }} plan.
     </v-alert>
 
     <!-- Main Data Table Container -->
-    <v-card class="glass-card-ethereal overflow-hidden" variant="flat">
-      <!-- Top Action Bar -->
-      <div class="pa-4 d-flex align-center flex-wrap gap-4" style="background: rgba(255,255,255,0.1);">
-        <div style="width: 250px;">
+    <v-card class="soft-card overflow-hidden pa-4" variant="flat" rounded="xl">
+      <!-- Filter Bar Header Inside Card -->
+      <div class="d-flex align-center justify-space-between flex-wrap gap-3 mb-4">
+        <!-- Search Input -->
+        <div style="min-width: 280px; max-width: 380px;" class="flex-grow-1">
           <v-text-field
             v-model="search"
             prepend-inner-icon="mdi-magnify"
-            placeholder="Search directory..."
-            variant="solo"
-            density="comfortable"
+            placeholder="Search directory by name, email, phone..."
+            variant="outlined"
+            density="compact"
             hide-details
-            flat
-            class="search-pill bg-transparent"
+            rounded="lg"
+            bg-color="grey-lighten-5"
+            class="search-pill"
             @update:model-value="onSearch"
           ></v-text-field>
         </div>
-        
-        <v-spacer></v-spacer>
 
-        <!-- Ghost Dropdowns for Filters -->
-        <div class="d-flex align-center gap-2">
-          <v-btn-toggle 
-            v-model="statusFilter" 
-            mandatory 
-            density="comfortable" 
-            class="d-flex rounded-lg" 
-            variant="text"
-            style="background: rgba(255,255,255,0.4);"
+        <!-- Filters (Status Toggle & CSV Import) -->
+        <div class="d-flex align-center gap-3 flex-wrap">
+          <v-select
+            v-model="statusFilter"
+            :items="[
+              { title: 'Active Only', value: 'true' },
+              { title: 'Inactive Only', value: 'false' },
+              { title: 'All Statuses', value: '' }
+            ]"
+            item-title="title"
+            item-value="value"
+            prepend-inner-icon="mdi-tune-variant"
+            hide-details
+            density="compact"
+            variant="outlined"
+            rounded="lg"
+            bg-color="white"
+            style="width: 170px;"
+            class="text-caption"
             @update:model-value="onSearch"
+          ></v-select>
+
+          <input type="file" ref="fileInput" accept=".csv" style="display: none" @change="handleFileUpload" />
+
+          <v-btn
+            v-if="auth.can('customers', 'create')"
+            variant="outlined"
+            color="grey-darken-1"
+            prepend-icon="mdi-file-upload-outline"
+            rounded="lg"
+            height="40"
+            class="text-capitalize text-body-2 font-weight-medium bg-white"
+            @click="triggerFileInput"
           >
-            <v-btn value="true" class="px-4 font-weight-bold text-caption text-blue-grey-darken-3">Active</v-btn>
-            <v-btn value="false" class="px-4 font-weight-bold text-caption text-blue-grey-darken-3">Inactive</v-btn>
-          </v-btn-toggle>
+            Import CSV
+          </v-btn>
         </div>
-
-        <input type="file" ref="fileInput" accept=".csv" style="display: none" @change="handleFileUpload" />
-        
-        <!-- Add Button (Glossy 3D) -->
-        <v-btn
-          v-if="auth.can('customers', 'write')"
-          class="btn-3d px-3 ml-2"
-          height="40"
-          width="40"
-          min-width="40"
-          @click="openCreateDialog"
-        >
-          <v-icon icon="mdi-plus" size="24"></v-icon>
-        </v-btn>
-
-        <!-- More Options Menu -->
-        <v-menu v-if="auth.can('customers', 'write')" location="bottom end">
-          <template v-slot:activator="{ props }">
-            <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text" size="small" class="ml-1 text-blue-grey-darken-2"></v-btn>
-          </template>
-          <v-list class="glass-card-ethereal pa-2" density="compact">
-            <v-list-item @click="downloadTemplate" prepend-icon="mdi-file-download" title="Download CSV Template" class="rounded-lg mb-1"></v-list-item>
-            <v-list-item @click="triggerFileInput" prepend-icon="mdi-file-upload" title="Import CSV" class="rounded-lg"></v-list-item>
-          </v-list>
-        </v-menu>
       </div>
 
-      <v-divider style="opacity: 0.1"></v-divider>
-
-      <!-- The Table -->
+      <!-- Customer Table -->
       <v-data-table-server
         v-model:items-per-page="itemsPerPage"
         :headers="headers"
@@ -144,51 +120,66 @@
         :items-length="totalItems"
         :loading="loading"
         @update:options="loadCustomers"
-        class="bg-transparent elevation-0 ethereal-table"
+        class="bg-transparent elevation-0 custom-customer-table"
         hover
       >
+        <!-- Customer Name -->
         <template v-slot:item.name="{ item }">
-          <div class="d-flex align-center py-2">
-            <v-avatar color="rgba(147, 51, 234, 0.1)" size="36" class="mr-3 text-primary font-weight-black">
+          <div class="d-flex align-center py-1">
+            <v-avatar color="rgba(79, 66, 148, 0.1)" size="36" class="mr-3 text-primary font-weight-black">
               {{ item.name.charAt(0).toUpperCase() }}
             </v-avatar>
-            <div class="font-weight-bold text-blue-grey-darken-4 clickable-name text-truncate" style="max-width: 200px;" @click="viewCustomer(item.id)">
+            <div class="font-weight-bold text-body-2 color-on-surface clickable-name text-truncate" style="max-width: 220px;" @click="viewCustomer(item.id)">
               {{ item.name }}
             </div>
           </div>
         </template>
 
-        <template v-slot:item.phone_whatsapp="{ item }">
-          <div class="d-flex align-center">
-            <span class="text-blue-grey-darken-3 font-weight-medium">{{ item.phone_whatsapp }}</span>
-          </div>
+        <!-- Email -->
+        <template v-slot:item.assigned_user_id="{ item }"><span class="text-body-2">{{ item.AssignedSalesStaff?.name || 'Unassigned' }}</span></template>
+        <template v-slot:item.email="{ item }">
+          <span class="text-body-2 opacity-80">{{ item.email || '-' }}</span>
         </template>
 
+        <!-- Phone / WhatsApp -->
+        <template v-slot:item.phone_whatsapp="{ item }">
+          <span class="text-body-2 opacity-80">{{ item.phone_whatsapp || '-' }}</span>
+        </template>
+
+        <!-- Location -->
+        <template v-slot:item.city="{ item }">
+          <span class="text-body-2 opacity-80">{{ item.city || item.country || '-' }}</span>
+        </template>
+
+        <!-- Status Chip -->
         <template v-slot:item.is_active="{ item }">
           <v-chip
-            :color="item.is_active ? '#22C55E' : '#94A3B8'"
-            variant="flat"
             size="small"
-            class="font-weight-bold text-white px-3"
-            style="opacity: 0.8;"
+            rounded="pill"
+            class="px-3 font-weight-bold text-capitalize"
+            :color="item.is_active ? 'success' : 'grey'"
+            variant="tonal"
+            style="font-size: 11px; height: 24px;"
           >
             {{ item.is_active ? 'Active' : 'Inactive' }}
           </v-chip>
         </template>
 
+        <!-- Actions -->
         <template v-slot:item.actions="{ item }">
-          <div class="d-flex justify-end gap-1">
-            <v-btn icon="mdi-file-document-outline" variant="flat" size="x-small" class="ethereal-action-btn" @click="viewCustomer(item.id)"></v-btn>
-            <v-btn icon="mdi-whatsapp" variant="flat" size="x-small" class="ethereal-action-btn" @click.stop="openWhatsApp(item.phone_whatsapp, GENERAL_MSG)"></v-btn>
-            <v-btn icon="mdi-email-fast" variant="flat" size="x-small" class="ethereal-action-btn" title="Send Email" @click.stop="openSendEmail(item)"></v-btn>
-            <v-menu v-if="auth.can('customers', 'write')" location="bottom end">
+          <div class="d-flex justify-end gap-1 align-center">
+            <v-btn icon="mdi-eye-outline" variant="text" size="small" color="grey-darken-1" title="View Profile" @click="viewCustomer(item.id)"></v-btn>
+            <v-btn icon="mdi-whatsapp" variant="text" size="small" color="success" title="WhatsApp Message" @click.stop="openWhatsApp(item.phone_whatsapp, GENERAL_MSG)"></v-btn>
+            <v-btn icon="mdi-email-outline" variant="text" size="small" color="primary" title="Send Email" @click.stop="openSendEmail(item)"></v-btn>
+            <v-menu v-if="auth.canRecord('customers', 'edit_form', item) || auth.canRecord('customers', 'delete', item)" location="bottom end">
                <template v-slot:activator="{ props }">
-                 <v-btn v-bind="props" icon="mdi-dots-vertical" variant="flat" size="x-small" class="ethereal-action-btn"></v-btn>
+                 <v-btn v-bind="props" icon="mdi-dots-horizontal" variant="text" size="small" color="grey-darken-1"></v-btn>
                </template>
-               <v-list class="glass-card-ethereal pa-2" density="compact">
-                 <v-list-item @click="openEditDialog(item)" prepend-icon="mdi-pencil" title="Edit Customer" class="rounded-lg mb-1"></v-list-item>
-                 <v-list-item v-if="item.is_active && auth.can('customers', 'delete')" @click="confirmDelete(item)" prepend-icon="mdi-delete" title="Deactivate" base-color="error" class="rounded-lg mb-1"></v-list-item>
-                 <v-list-item v-if="!item.is_active" @click="reactivateCustomer(item)" prepend-icon="mdi-account-reactivate" title="Reactivate" base-color="success" class="rounded-lg"></v-list-item>
+               <v-list density="compact" width="190" rounded="lg" elevation="3">
+                 <v-list-item v-if="auth.canRecord('customers', 'edit_form', item)" @click="openEditDialog(item)" prepend-icon="mdi-pencil-outline" title="Edit Customer"></v-list-item>
+                 <v-divider v-if="item.is_active"></v-divider>
+                 <v-list-item v-if="item.is_active && auth.canRecord('customers', 'delete', item)" @click="confirmDelete(item)" prepend-icon="mdi-delete-outline" title="Deactivate" color="error"></v-list-item>
+                 <v-list-item v-if="!item.is_active && auth.canRecord('customers', 'edit', item)" @click="reactivateCustomer(item)" prepend-icon="mdi-account-reactivate-outline" title="Reactivate" color="success"></v-list-item>
                </v-list>
             </v-menu>
           </div>
@@ -203,16 +194,16 @@
     />
 
     <v-dialog v-model="deleteDialog" max-width="400px">
-      <v-card class="glass-card-ethereal pa-2" variant="flat">
-        <v-card-title class="text-h6 font-weight-bold text-blue-grey-darken-4">Deactivate Customer?</v-card-title>
-        <v-card-text class="text-blue-grey-darken-2">
-          Are you sure you want to deactivate <b class="text-blue-grey-darken-4">{{ itemToDelete?.name }}</b>?
+      <v-card class="soft-card pa-4" variant="flat">
+        <v-card-title class="text-h6 font-weight-bold color-on-surface">Deactivate Customer?</v-card-title>
+        <v-card-text class="opacity-80">
+          Are you sure you want to deactivate <b class="color-primary">{{ itemToDelete?.name }}</b>?
           This will hide them from active lists.
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn variant="text" class="text-none font-weight-bold text-blue-grey-darken-2" @click="deleteDialog = false">Cancel</v-btn>
-          <v-btn color="error" variant="flat" class="text-none font-weight-bold px-4 rounded-lg" @click="doDelete">Deactivate</v-btn>
+          <v-btn variant="text" class="text-capitalize font-weight-bold" @click="deleteDialog = false">Cancel</v-btn>
+          <v-btn color="error" variant="flat" class="text-capitalize font-weight-bold px-5 rounded-lg" @click="doDelete">Deactivate</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -234,11 +225,9 @@ import { useWhatsApp } from '@/composables/useWhatsApp';
 import CustomerForm from '@/components/customers/CustomerForm.vue';
 import SendEmailDialog from '@/components/email/SendEmailDialog.vue';
 import Papa from 'papaparse';
-import { useDashboardStore } from '~/stores/dashboard';
 import { useAuthStore } from '@/stores/auth';
 
 const auth = useAuthStore();
-const dashboardStore = useDashboardStore();
 const { openWhatsApp, GENERAL_MSG } = useWhatsApp();
 const { $api } = useNuxtApp();
 const router = useRouter();
@@ -269,9 +258,6 @@ const openSendEmail = (customer) => {
 const fileInput = ref(null)
 const importing = ref(false)
 
-onMounted(() => {
-    dashboardStore.fetchStats();
-});
 
 const triggerFileInput = () => {
   if (fileInput.value) {
@@ -333,12 +319,13 @@ const downloadTemplate = () => {
 };
 
 const headers = [
-  { title: 'Customer Name', key: 'name', align: 'start' },
-  { title: 'Email Address', key: 'email' },
-  { title: 'Contact', key: 'phone_whatsapp' },
-  { title: 'Location', key: 'city' },
-  { title: 'Status', key: 'is_active', align: 'center' },
-  { title: '', key: 'actions', align: 'end', sortable: false }
+  { title: 'CUSTOMER NAME', key: 'name', align: 'start' },
+  { title: 'SALESPERSON', key: 'assigned_user_id', sortable: false },
+  { title: 'EMAIL ADDRESS', key: 'email' },
+  { title: 'CONTACT', key: 'phone_whatsapp' },
+  { title: 'LOCATION', key: 'city' },
+  { title: 'STATUS', key: 'is_active', align: 'center' },
+  { title: 'ACTIONS', key: 'actions', align: 'end', sortable: false }
 ];
 
 const loadCustomers = async ({ page, itemsPerPage: limit }) => {
@@ -435,43 +422,73 @@ const reactivateCustomer = async (item) => {
 };
 </script>
 
-<style scoped>
-.clickable-name {
-  cursor: pointer;
-  transition: color 0.2s;
-}
-.clickable-name:hover {
-  color: #9333EA !important;
+<style>
+/* ==========================================================
+   STRICT CLASSIC THEME — Customer Directory Page
+   Scoped under .v-theme--classic only
+   ========================================================== */
+
+:global(.v-theme--classic) .v-container {
+  background: #F8F9FE !important;
 }
 
-/* Ethereal Table Tweaks */
-:deep(.ethereal-table th) {
-  background: transparent !important;
-  color: #94A3B8 !important;
+/* ── Stat Cards ── */
+:global(.v-theme--classic) .soft-card {
+  background: #FFFFFF !important;
+  border: 1px solid rgba(79, 66, 148, 0.12) !important;
+  box-shadow: 0 4px 20px -4px rgba(79, 66, 148, 0.08) !important;
+}
+
+/* ── Primary Buttons ── */
+:global(.v-theme--classic) .v-btn--variant-elevated,
+:global(.v-theme--classic) .v-btn--variant-flat {
+  background: #4F4294 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 14px -4px rgba(79, 66, 148, 0.40) !important;
+}
+:global(.v-theme--classic) .v-btn--variant-elevated:hover,
+:global(.v-theme--classic) .v-btn--variant-flat:hover {
+  background: #6554C0 !important;
+  transform: translateY(-1px) !important;
+}
+
+:global(.v-theme--classic) .v-btn--variant-outlined {
+  border-color: rgba(79, 66, 148, 0.30) !important;
+  color: #4F4294 !important;
+  background: #FFFFFF !important;
+}
+
+/* ── Data Table Header ── */
+:global(.v-theme--classic) .v-data-table .v-data-table-header__content {
+  color: #4F4294 !important;
   font-weight: 700 !important;
-  text-transform: uppercase;
-  font-size: 0.75rem;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid rgba(255,255,255,0.4) !important;
+  font-size: 0.72rem !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
 }
 
-:deep(.ethereal-table td) {
-  border-bottom: 1px solid rgba(255,255,255,0.2) !important;
-  background: transparent !important;
+/* ── Row Hover & Links ── */
+:global(.v-theme--classic) .clickable-name {
+  color: #4F4294 !important;
+  transition: color 0.2s ease;
+}
+:global(.v-theme--classic) .clickable-name:hover {
+  color: #6554C0 !important;
+  text-decoration: underline;
 }
 
-:deep(.ethereal-table tr:hover td) {
-  background: rgba(255,255,255,0.3) !important;
+:global(.v-theme--classic) .v-data-table .v-data-table__tr:hover td {
+  background: rgba(79, 66, 148, 0.04) !important;
 }
 
-.ethereal-action-btn {
-  background: rgba(255,255,255,0.5) !important;
-  border-radius: 8px !important;
-  color: #64748B !important;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
+/* ── Active Pagination Button ── */
+:global(.v-theme--classic) .v-pagination .v-btn--active {
+  background: #4F4294 !important;
+  color: #FFFFFF !important;
 }
-.ethereal-action-btn:hover {
-  background: rgba(255,255,255,0.8) !important;
-  color: #0F172A !important;
+
+/* ── Focus Outline ── */
+:global(.v-theme--classic) .v-field--focused .v-field__outline {
+  border-color: #4F4294 !important;
 }
 </style>

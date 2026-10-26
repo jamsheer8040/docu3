@@ -1,3 +1,4 @@
+const cvOwner = req => require('../utils/permissionRules').hasScopedRules(req.user.Role?.permissions) ? {} : { user_id: req.user.id };
 const { SavedCv, User } = require('../models');
 const { Op } = require('sequelize');
 
@@ -10,7 +11,7 @@ exports.getSavedCvs = async (req, res) => {
         const cvs = await SavedCv.findAll({
             where: {
                 tenant_id: req.user.tenant_id,
-                user_id: req.user.id,
+                ...cvOwner(req),
                 created_at: {
                     [Op.gte]: thirtyDaysAgo
                 }
@@ -31,7 +32,7 @@ exports.getSavedCv = async (req, res) => {
             where: {
                 id: req.params.id,
                 tenant_id: req.user.tenant_id,
-                user_id: req.user.id
+                ...cvOwner(req)
             }
         });
         if (!cv) {
@@ -74,7 +75,7 @@ exports.updateSavedCv = async (req, res) => {
             where: {
                 id: req.params.id,
                 tenant_id: req.user.tenant_id,
-                user_id: req.user.id
+                ...cvOwner(req)
             }
         });
 
@@ -102,7 +103,7 @@ exports.deleteSavedCv = async (req, res) => {
             where: {
                 id: req.params.id,
                 tenant_id: req.user.tenant_id,
-                user_id: req.user.id
+                ...cvOwner(req)
             }
         });
 

@@ -2,7 +2,9 @@
   <v-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" width="97vw" max-width="1900px" height="97vh" scrollable persistent>
     <v-card class="soft-card">
       <v-card-title class="pa-6 border-b d-flex align-center justify-space-between bg-surface">
-        <span class="text-h5 font-weight-black text-primary">Create Sales Order</span>
+        <span class="text-h5 font-weight-black text-primary">
+          {{ isEditMode ? `Edit Sales Order (${orderToEdit?.order_number})` : 'Create Sales Order' }}
+        </span>
         <v-btn icon="mdi-close" variant="text" @click="$emit('update:modelValue', false)"></v-btn>
       </v-card-title>
 
@@ -18,6 +20,7 @@
                 item-title="name"
                 item-value="id"
                 :rules="[v => !!v || 'Customer is required']"
+                :disabled="isEditMode"
                 variant="outlined"
                 density="comfortable"
                 class="mb-2 soft-input"
@@ -71,12 +74,18 @@
           <v-divider class="my-6"></v-divider>
 
           <div class="d-flex align-center justify-space-between mb-4">
-            <h3 class="text-h6 font-weight-bold">Requested Services</h3>
+            <div>
+              <h3 class="text-h6 font-weight-bold">Requested Services</h3>
+              <p v-if="isEditMode" class="text-caption text-secondary">
+                Add more services or update pending services below. Processed services are preserved.
+              </p>
+            </div>
             <v-btn color="primary" variant="tonal" size="small" prepend-icon="mdi-plus" @click="addServiceItem" rounded="lg">
               Add Service
             </v-btn>
           </div>
 
+          <ServiceBundlePicker v-if="modelValue" kind="sales-order" :disabled="saving" :pricing-category="customers.find(row=>String(row.id)===String(formData.customer_id))?.pricing_category || 'Normal'" @add="addTemplate" @busy="templateBusy=$event" />
           <v-table class="bg-transparent soft-card mb-4">
             <thead>
               <tr>
@@ -105,8 +114,14 @@
                     class="soft-input"
                     bg-color="transparent"
                     hide-details
+                    :disabled="item.is_locked"
                     @update:modelValue="(val) => onServiceTypeSelect(val, index)"
                   ></v-autocomplete>
+                  <div v-if="item.is_locked" class="mt-1 d-flex align-center gap-1">
+                    <v-chip size="x-small" color="primary" variant="tonal" class="font-weight-bold" style="height: 18px; font-size: 10px;">
+                      {{ item.service_order_id ? 'Pushed to Service' : (item.confirmed ? 'Confirmed' : item.status) }}
+                    </v-chip>
+                  </div>
                 </td>
                 <td class="pa-2">
                   <v-text-field
@@ -128,6 +143,7 @@
                     class="soft-input"
                     bg-color="transparent"
                     hide-details
+                    :disabled="item.is_locked"
                     style="width: 80px"
                   ></v-text-field>
                 </td>
@@ -140,6 +156,7 @@
                     class="soft-input"
                     bg-color="transparent"
                     hide-details
+                    :disabled="item.is_locked"
                     style="width: 90px"
                     @update:modelValue="item.estimated_price = (Number(item.cost) || 0) + (Number(item.service_charge) || 0)"
                   ></v-text-field>
@@ -153,6 +170,7 @@
                     class="soft-input"
                     bg-color="transparent"
                     hide-details
+                    :disabled="item.is_locked"
                     style="width: 90px"
                     @update:modelValue="item.estimated_price = (Number(item.cost) || 0) + (Number(item.service_charge) || 0)"
                   ></v-text-field>
@@ -166,6 +184,7 @@
                     class="soft-input"
                     bg-color="transparent"
                     hide-details
+                    :disabled="item.is_locked"
                     style="width: 100px"
                   ></v-text-field>
                 </td>
@@ -183,9 +202,9 @@
                 </td>
                 <td class="pa-2">
                   <v-menu v-model="menuState[index]" :close-on-content-click="false" location="bottom">
-                    <template v-slot:activator="{ props }">
+                    <template v-slot:activator="{ props: menuProps }">
                       <v-text-field
-                        v-bind="props"
+                        v-bind="menuProps"
                         :model-value="item.expected_processing_time"
                         readonly
                         append-inner-icon="mdi-calendar"
@@ -206,7 +225,12 @@
                   </v-menu>
                 </td>
                 <td class="pa-2 text-center">
-                  <v-btn icon="mdi-delete" variant="text" color="error" size="small" @click="removeServiceItem(index)"></v-btn>
+                  <v-tooltip v-if="item.is_locked" text="Action processed (cannot delete)" location="top">
+                    <template v-slot:activator="{ props: tipProps }">
+                      <v-icon v-bind="tipProps" size="18" color="grey-darken-1">mdi-lock-outline</v-icon>
+                    </template>
+                  </v-tooltip>
+                  <v-btn v-else icon="mdi-delete" variant="text" color="error" size="small" @click="removeServiceItem(index)" title="Remove service"></v-btn>
                 </td>
               </tr>
             </tbody>
@@ -220,8 +244,8 @@
       <v-card-actions class="pa-6 border-t bg-surface">
         <v-spacer></v-spacer>
         <v-btn variant="text" color="secondary" size="large" @click="$emit('update:modelValue', false)" class="mr-2">Cancel</v-btn>
-        <v-btn class="btn-standard px-6" size="large" @click="save" :loading="saving" :disabled="!valid || formData.items.length === 0">
-          Save Sales Order
+        <v-btn class="btn-standard px-6" size="large" @click="save" :loading="saving" :disabled="templateBusy || !valid || formData.items.length === 0">
+          {{ isEditMode ? 'Update Sales Order' : 'Save Sales Order' }}
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -229,9 +253,11 @@
 </template>
 
 <script setup>
-import { reactive, ref, watch } from 'vue'
+import { reactive, ref, computed, watch } from 'vue'
 import { useNuxtApp } from '#app'
 import { useUIStore } from '~/stores/ui'
+import { appendBundleLines } from '~/utils/serviceBundleLines.mjs'
+import ServiceBundlePicker from '~/components/services/ServiceBundlePicker.vue'
 
 const uiStore = useUIStore()
 
@@ -248,8 +274,14 @@ const props = defineProps({
   initialCustomerId: {
     type: [Number, String],
     default: null
+  },
+  orderToEdit: {
+    type: Object,
+    default: null
   }
 })
+
+const isEditMode = computed(() => !!props.orderToEdit?.id)
 
 const emit = defineEmits(['update:modelValue', 'saved'])
 const { $api } = useNuxtApp()
@@ -257,6 +289,7 @@ const { $api } = useNuxtApp()
 const form = ref(null)
 const valid = ref(false)
 const saving = ref(false)
+const templateBusy = ref(false)
 const menuState = ref({})
 
 const onDateSelected = (val, index) => {
@@ -277,7 +310,8 @@ const defaultItem = () => ({
   service_charge: 0,
   estimated_price: 0,
   priority: 'Normal',
-  expected_date: ''
+  expected_processing_time: '',
+  is_locked: false
 })
 
 const formData = reactive({
@@ -291,12 +325,39 @@ const formData = reactive({
 
 watch(() => props.modelValue, (val) => {
   if (val) {
-    formData.customer_id = props.initialCustomerId || null
-    formData.contact_person = ''
-    formData.customer_reference = ''
-    formData.branch = ''
-    formData.internal_remarks = ''
-    formData.items = [defaultItem()]
+    if (props.orderToEdit) {
+      formData.customer_id = props.orderToEdit.customer_id
+      formData.contact_person = props.orderToEdit.contact_person || ''
+      formData.customer_reference = props.orderToEdit.customer_reference || ''
+      formData.branch = props.orderToEdit.branch || ''
+      formData.internal_remarks = props.orderToEdit.internal_remarks || ''
+      formData.items = (props.orderToEdit.SalesOrderItems || []).map(i => ({
+        id: i.id,
+        service_type_id: i.service_type_id,
+        service_name: i.service_name,
+        description: i.description || '',
+        quantity: i.quantity || 1,
+        cost: Number(i.cost) || 0,
+        service_charge: Number(i.service_charge) || 0,
+        estimated_price: Number(i.estimated_price) || 0,
+        priority: i.priority || 'Normal',
+        expected_processing_time: i.expected_processing_time || '',
+        status: i.status,
+        confirmed: i.confirmed,
+        service_order_id: i.service_order_id,
+        is_locked: !!(i.service_order_id || i.confirmed || i.status === 'In Progress' || i.status === 'CompletedInvoicePending' || i.status === 'CompletedInvoiceCreated')
+      }))
+      if (formData.items.length === 0) {
+        formData.items = [defaultItem()]
+      }
+    } else {
+      formData.customer_id = props.initialCustomerId || null
+      formData.contact_person = ''
+      formData.customer_reference = ''
+      formData.branch = ''
+      formData.internal_remarks = ''
+      formData.items = [defaultItem()]
+    }
     if (form.value) form.value.resetValidation()
   }
 }, { immediate: true })
@@ -304,8 +365,16 @@ watch(() => props.modelValue, (val) => {
 const addServiceItem = () => {
   formData.items.push(defaultItem())
 }
+const addTemplate = items => {
+  formData.items = appendBundleLines(formData.items, items)
+}
 
 const removeServiceItem = (index) => {
+  const item = formData.items[index]
+  if (item && item.is_locked) {
+    uiStore.showError('Cannot delete service that has already been confirmed or pushed.')
+    return
+  }
   formData.items.splice(index, 1)
 }
 
@@ -335,6 +404,7 @@ const onServiceTypeSelect = (id, index) => {
 }
 
 const save = async () => {
+  if (saving.value || templateBusy.value) return
   const { valid: isValid } = await form.value.validate()
   if (!isValid) return
 
@@ -349,7 +419,13 @@ const save = async () => {
 
   saving.value = true
   try {
-    await $api.post('/sales-orders', formData)
+    if (isEditMode.value) {
+      await $api.put(`/sales-orders/${props.orderToEdit.id}`, formData)
+      uiStore.showSuccess('Sales Order updated successfully')
+    } else {
+      await $api.post('/sales-orders', formData)
+      uiStore.showSuccess('Sales Order created successfully')
+    }
     emit('saved')
     emit('update:modelValue', false)
   } catch (err) {

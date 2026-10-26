@@ -8,10 +8,17 @@
 
       <v-card-text class="pa-6">
         <v-form ref="form" v-model="valid" @submit.prevent="save">
+          <div class="mb-4">
+            <label class="text-caption font-weight-bold mb-2 d-block">Lead Type</label>
+            <v-btn-toggle v-model="formData.lead_type" color="primary" variant="outlined" divided mandatory aria-label="Lead type">
+              <v-btn value="Person">Person</v-btn>
+              <v-btn value="Company">Company</v-btn>
+            </v-btn-toggle>
+          </div>
 
           <!-- Customer Search Field with custom dropdown -->
           <div class="customer-search-wrapper mb-4" @keydown.down.prevent="highlightNext" @keydown.up.prevent="highlightPrev" @keydown.enter.prevent="selectHighlighted" @keydown.esc="isFocused = false">
-            <label class="text-caption font-weight-bold text-slate-700 mb-1 ml-1 d-block">Customer / Company Name *</label>
+            <label class="text-caption font-weight-bold text-slate-700 mb-1 ml-1 d-block">{{ formData.lead_type === 'Person' ? 'Customer Name *' : 'Customer / Company Name *' }}</label>
             <v-text-field
               ref="searchField"
               v-model="customerSearch"
@@ -22,7 +29,7 @@
               bg-color="transparent"
               clearable
               autocomplete="off"
-              :prepend-inner-icon="selectedCustomerId ? 'mdi-account-check' : 'mdi-domain'"
+              :prepend-inner-icon="selectedCustomerId ? 'mdi-account-check' : (formData.lead_type === 'Person' ? 'mdi-account-outline' : 'mdi-domain')"
               :color="selectedCustomerId ? 'success' : 'primary'"
               :hint="selectedCustomerId ? 'Existing customer selected' : (customerSearch ? 'New prospect — fill in remaining fields' : '')"
               persistent-hint
@@ -134,7 +141,9 @@
               <label class="text-caption font-weight-bold text-slate-700 mb-1 ml-1 d-block">Lead Status</label>
               <v-select
                 v-model="formData.status"
-                :items="['New', 'Contacted', 'Qualified', 'Lost', 'Won']"
+                :hint="lead?.status === 'Archived' ? 'Choose an active status to reopen this lead.' : ''"
+                :persistent-hint="lead?.status === 'Archived'"
+                :items="['New', 'Contacted', 'Qualified', 'Follow-up', 'Archived']"
                 variant="outlined"
                 density="comfortable"
                 class="mb-3 soft-input"
@@ -145,7 +154,7 @@
               <label class="text-caption font-weight-bold text-slate-700 mb-1 ml-1 d-block">Lead Source</label>
               <v-select
                 v-model="formData.source"
-                :items="['Website', 'Referral', 'Social Media', 'Cold Call', 'Other']"
+                :items="['Website', 'Referral', 'Social Media', 'Meta Ads', 'Cold Call', 'Other']"
                 variant="outlined"
                 density="comfortable"
                 class="mb-3 soft-input"
@@ -153,6 +162,9 @@
               ></v-select>
             </v-col>
           </v-row>
+
+          <v-text-field v-if="formData.status === 'Follow-up'" v-model="formData.next_follow_up_date" label="Follow-up date" type="date" variant="outlined" :rules="[value => !!value || 'Choose a follow-up date']" />
+          <v-textarea v-if="formData.status === 'Archived'" v-model="formData.archive_reason" label="Archive reason *" variant="outlined" rows="2" maxlength="5000" :rules="[value => !!value?.trim() || 'Enter an archive reason']" />
 
           <label class="text-caption font-weight-bold text-slate-700 mb-1 ml-1 d-block">Notes</label>
           <v-textarea
@@ -181,6 +193,7 @@
 import { ref, reactive, watch, computed, onMounted } from 'vue';
 import { useLeadStore } from '~/stores/leads';
 import { useNuxtApp } from '#app';
+import { visibleLeadNotes, preserveLeadTracking } from '~/utils/leadNotes';
 
 const props = defineProps({
   modelValue: Boolean,
@@ -208,6 +221,8 @@ const highlightedIndex = ref(-1);
 const isEditing = computed(() => !!props.lead);
 
 const formData = reactive({
+  lead_type: 'Company',
+  archive_reason: '',
   customer_id: null,
   service_id: null,
   name: '',
@@ -215,6 +230,7 @@ const formData = reactive({
   email: '',
   phone: '',
   status: 'New',
+  next_follow_up_date: null,
   source: 'Website',
   notes: ''
 });
@@ -333,6 +349,8 @@ const selectHighlighted = () => {
 };
 
 const resetForm = () => {
+  formData.lead_type = 'Company';
+  formData.archive_reason = '';
   formData.customer_id = null;
   formData.service_id = null;
   formData.name = '';
@@ -340,6 +358,7 @@ const resetForm = () => {
   formData.email = '';
   formData.phone = '';
   formData.status = 'New';
+  formData.next_follow_up_date = null;
   formData.source = 'Website';
   formData.notes = '';
   customerSearch.value = '';
@@ -351,6 +370,8 @@ const resetForm = () => {
 watch(() => props.modelValue, (val) => {
   if (val) {
     if (props.lead) {
+      formData.lead_type = props.lead.lead_type || null;
+      formData.archive_reason = props.lead.archive_reason || '';
       formData.customer_id = props.lead.customer_id || null;
       formData.service_id = props.lead.service_id || null;
       formData.name = props.lead.name || '';
@@ -358,8 +379,9 @@ watch(() => props.modelValue, (val) => {
       formData.email = props.lead.email || '';
       formData.phone = props.lead.phone || '';
       formData.status = props.lead.status || 'New';
+      formData.next_follow_up_date = props.lead.next_follow_up_date || null;
       formData.source = props.lead.source || 'Website';
-      formData.notes = props.lead.notes || '';
+      formData.notes = visibleLeadNotes(props.lead.notes);
       customerSearch.value = formData.company_name || formData.name;
       selectedCustomerId.value = formData.customer_id;
     } else {
@@ -377,7 +399,7 @@ const save = async () => {
   saving.value = true;
   try {
     if (isEditing.value) {
-      await leadStore.updateLead(props.lead.id, formData);
+      await leadStore.updateLead(props.lead.id, { ...formData, notes: preserveLeadTracking(formData.notes, props.lead.notes) });
     } else {
       await leadStore.createLead(formData);
     }

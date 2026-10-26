@@ -14,15 +14,24 @@ const User = sequelize.define('User', {
   },
   email: {
     type: DataTypes.STRING(100),
-    allowNull: false,
+    allowNull: true,
     unique: true,
     validate: {
-      isEmail: true
+      isEmailOrNull(val) {
+        if (val && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+          throw new Error('Must be a valid email address');
+        }
+      }
     }
   },
   password_hash: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: true
+  },
+  can_login: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true
   },
   avatar: {
     type: DataTypes.STRING,
@@ -107,7 +116,7 @@ const User = sequelize.define('User', {
       }
     },
     beforeUpdate: async (user) => {
-      if (user.changed('password_hash') && !user.password_hash.startsWith('$2a$') && !user.password_hash.startsWith('$2b$')) {
+      if (user.changed('password_hash') && user.password_hash && !user.password_hash.startsWith('$2a$') && !user.password_hash.startsWith('$2b$')) {
         user.password_hash = await bcrypt.hash(user.password_hash, 10);
       }
     }
@@ -116,6 +125,7 @@ const User = sequelize.define('User', {
 
 // Instance method to check password
 User.prototype.validatePassword = async function(password) {
+  if (!this.can_login || !this.password_hash) return false;
   return await bcrypt.compare(password, this.password_hash);
 };
 

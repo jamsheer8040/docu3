@@ -1,0 +1,3 @@
+export const serviceFooterDefaults=Object.freeze({Pending:'#FFF1DD','In Progress':'#ECF5FF',CompletedInvoicePending:'#FFF6E5',CompletedInvoiceCreated:'#EAF7F0',FollowUpRequired:'#FFF2DE',Cancelled:'#FDEEEE'});
+export const serviceFooterFields=[{key:'Pending',label:'Pending'},{key:'In Progress',label:'In Progress'},{key:'CompletedInvoicePending',label:'Invoice Pending'},{key:'CompletedInvoiceCreated',label:'Completed / Invoice Created'},{key:'FollowUpRequired',label:'Follow-up'},{key:'Cancelled',label:'Cancelled'}];
+export function serviceFooterColors(value){return Object.fromEntries(Object.entries(serviceFooterDefaults).map(([key,fallback])=>[key,typeof value?.[key]==='string' && /^#[0-9a-f]{6}$/i.test(value[key])?value[key].toUpperCase():fallback]));}

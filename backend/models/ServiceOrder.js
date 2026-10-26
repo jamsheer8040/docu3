@@ -8,7 +8,7 @@ const ServiceOrder = sequelize.define('ServiceOrder', {
     autoIncrement: true
   },
   customer_id: {
-    type: DataTypes.BIGINT,
+    type: DataTypes.INTEGER,
     allowNull: false
   },
   service_type_id: {
@@ -24,6 +24,9 @@ const ServiceOrder = sequelize.define('ServiceOrder', {
     type: DataTypes.TEXT,
     allowNull: true
   },
+  assigned_user_id: { type: DataTypes.INTEGER, allowNull: true },
+  assigned_at: { type: DataTypes.DATE, allowNull: true },
+  completed_by_user_id: { type: DataTypes.INTEGER, allowNull: true },
   started_at: {
     type: DataTypes.DATE,
     allowNull: true
@@ -57,7 +60,7 @@ const ServiceOrder = sequelize.define('ServiceOrder', {
     allowNull: true
   },
   cost_supplier_id: {
-    type: DataTypes.BIGINT,
+    type: DataTypes.INTEGER,
     allowNull: true,
     references: {
       model: 'suppliers',

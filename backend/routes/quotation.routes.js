@@ -1,0 +1,14 @@
+const router=require('express').Router();
+const {verifyToken,requirePermission}=require('../middleware/auth.middleware');
+const controller=require('../controllers/quotation.controller');
+router.use(verifyToken,(req,res,next)=>req.user.Role?.type==='CustomerPortal'?res.sendStatus(403):next());
+router.get('/options',(req,res,next)=>{const {actionScope}=require('../utils/permissionRules');if(actionScope(req.user,'quotations','create')===true || actionScope(req.user,'quotations','edit')!=='none')return next();res.sendStatus(403);},controller.options);
+router.put('/defaults',requirePermission('settings','write'),controller.defaults);
+router.get('/',requirePermission('quotations','read'),controller.list);
+router.post('/',requirePermission('quotations','write'),controller.create);
+router.get('/:id',requirePermission('quotations','read'),controller.detail);
+router.put('/:id',requirePermission('quotations','write'),controller.update);
+router.post('/:id/status',requirePermission('quotations','write'),controller.status);
+router.delete('/:id',requirePermission('quotations','delete'),controller.remove);
+router.get('/:id/pdf',requirePermission('quotations','read'),controller.pdf);
+module.exports=router;

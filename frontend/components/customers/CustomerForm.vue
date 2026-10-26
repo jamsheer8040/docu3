@@ -10,8 +10,12 @@
         <v-btn icon="mdi-close" variant="text" size="small" @click="close"></v-btn>
       </v-card-title>
       <v-card-text>
+        <v-alert v-if="errorMessage" type="error" variant="tonal" class="mb-4">{{ errorMessage }}</v-alert>
         <v-form @submit.prevent="submit">
           <v-row>
+            <v-col cols="12">
+              <v-select v-model="state.assigned_user_id" :items="salesStaff" item-title="name" item-value="id" label="Salesperson / customer owner *" variant="outlined" density="comfortable" :loading="staffLoading" :error-messages="v$.assigned_user_id.$errors.map(e => e.$message)" @blur="v$.assigned_user_id.$touch" />
+            </v-col>
             <v-col cols="12" md="6">
               <label class="text-caption font-weight-bold text-slate-700 mb-1 ml-1 d-block">Full Name *</label>
               <v-text-field
@@ -135,6 +139,8 @@
 <script setup>
 import { useVuelidate } from '@vuelidate/core';
 import { required, email, minLength, maxLength, helpers } from '@vuelidate/validators';
+import { useAuthStore } from '~/stores/auth';
+const auth = useAuthStore();
 
 const props = defineProps({
   modelValue: Boolean,
@@ -153,8 +159,16 @@ const show = computed({
 
 const isEdit = computed(() => !!props.customer);
 const loading = ref(false);
+const salesStaff = ref([]), staffLoading = ref(false), errorMessage = ref('');
+async function loadSalesStaff() {
+  staffLoading.value = true;
+  try { salesStaff.value = (await useNuxtApp().$api.get('/record-assignments/staff')).data.data; }
+  catch (error) { errorMessage.value = error.response?.data?.message || 'Could not load sales staff. Try again before changing the assignment.'; }
+  finally { staffLoading.value = false; }
+}
 
 const initialState = {
+  assigned_user_id: null,
   name: '',
   email: '',
   phone_whatsapp: '',
@@ -169,6 +183,7 @@ const initialState = {
 const state = reactive({ ...initialState });
 
 const rules = {
+  assigned_user_id: { required: helpers.withMessage('Select a salesperson', required) },
   name: { 
     required, 
     minLength: minLength(2), 
@@ -192,15 +207,16 @@ watch(() => props.customer, (newVal) => {
   if (newVal) {
     Object.assign(state, newVal);
   } else {
-    Object.assign(state, initialState);
+    Object.assign(state, initialState, { assigned_user_id: auth.user?.id ?? null });
     v$.value.$reset();
   }
 }, { immediate: true });
 
 // Also reset when dialog opens to ensure a clean form for "New Customer"
 watch(() => props.modelValue, (isOpen) => {
+  if (isOpen) { errorMessage.value = ''; loadSalesStaff(); }
   if (isOpen && !props.customer) {
-    Object.assign(state, initialState);
+    Object.assign(state, initialState, { assigned_user_id: auth.user?.id ?? null });
     v$.value.$reset();
   }
 });
@@ -229,6 +245,7 @@ const submit = async () => {
       close();
     }
   } catch (error) {
+    errorMessage.value = error.response?.data?.message || 'Could not save customer.';
     console.error('Error saving customer:', error);
   } finally {
     loading.value = false;

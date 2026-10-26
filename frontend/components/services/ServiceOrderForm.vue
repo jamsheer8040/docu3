@@ -88,8 +88,9 @@
           </template>
         </v-select>
 
+        <StaffAssignmentSelect v-model="state.assigned_user_id" :current-staff="order?.AssignedStaff" class="mb-4" />
         <!-- Notes -->
-        <label class="text-caption font-weight-bold text-slate-700 mb-1 ml-1 d-block">Internal Notes / Assignee</label>
+        <label class="text-caption font-weight-bold text-slate-700 mb-1 ml-1 d-block">Internal Notes</label>
         <v-textarea
           v-model="state.notes"
           rows="2"
@@ -144,6 +145,7 @@
 import { reactive, computed, onMounted, ref } from 'vue';
 import { useVuelidate } from '@vuelidate/core';
 import { required, maxLength } from '@vuelidate/validators';
+import StaffAssignmentSelect from './StaffAssignmentSelect.vue';
 
 const props = defineProps({
   serviceTypes: {
@@ -173,6 +175,7 @@ const state = reactive({
   customer_id: null,
   service_type_id: null,
   notes: '',
+  assigned_user_id: null,
   criticality: 'Normal'
 });
 
@@ -244,6 +247,7 @@ onMounted(() => {
     state.customer_id = props.order.customer_id;
     state.service_type_id = props.order.service_type_id;
     state.notes = props.order.notes || '';
+    state.assigned_user_id = props.order.assigned_user_id || null;
     state.criticality = props.order.criticality || 'Normal';
   }
 });

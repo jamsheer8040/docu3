@@ -1,9 +1,9 @@
 <template>
-  <v-app class="bg-dreamy-gradient">
+  <v-app class="bg-dreamy-gradient" :class="{ 'sage-shell': isSageShell, 'dashboard-typography': route.path === '/' }">
     <!-- Navigation Drawer (Sidebar) -->
     <v-navigation-drawer
       v-model="drawer"
-      :permanent="$vuetify.display.mdAndUp"
+      :permanent="$vuetify.display.mdAndUp && drawer"
       :temporary="$vuetify.display.smAndDown"
       elevation="0"
       border="0"
@@ -12,7 +12,11 @@
       style="border-right: none !important;"
     >
       <div class="pa-4 h-100 d-flex flex-column bg-transparent">
-          <div class="d-flex flex-column align-center text-center cursor-pointer" @click="navigateTo('/')">
+          <div v-if="isSageShell" class="sage-brand">
+            <NuxtLink to="/" class="sage-brand-home"><span class="sage-brand-mark"><v-icon icon="mdi-file-document" size="21" /></span><span>{{ configStore.appName }}</span></NuxtLink>
+            <v-btn icon="mdi-chevron-double-left" size="small" variant="text" aria-label="Hide menu" title="Hide menu" @click="drawer = false" />
+          </div>
+          <div v-else class="d-flex flex-column align-center text-center cursor-pointer" @click="navigateTo('/')">
             <div v-if="configStore.appLogo" class="mb-2 d-flex align-center justify-center p-2" style="width: 100%; height: 80px;">
                <v-img 
                  :src="configStore.appLogo"
@@ -48,21 +52,14 @@
             class="mb-2"
           ></v-list-item>
           <v-list-item
-            v-if="authStore.can('customers')"
+            v-if="authStore.can('leads')"
             prepend-icon="mdi-account-star-outline"
             title="Leads"
             to="/leads"
             color="primary"
             class="mb-2"
           ></v-list-item>
-          <v-list-item
-            v-if="authStore.can('suppliers')"
-            prepend-icon="mdi-truck-delivery-outline"
-            title="Suppliers"
-            to="/suppliers"
-            color="primary"
-            class="mb-2"
-          ></v-list-item>
+          <v-list-item v-if="authStore.can('suppliers')" prepend-icon="mdi-shopping-outline" title="Purchases" to="/purchases" color="primary" class="mb-2" />
           <v-list-item
             v-if="authStore.can('documents')"
             prepend-icon="mdi-file-document-outline"
@@ -71,6 +68,7 @@
             color="primary"
             class="mb-2"
           ></v-list-item>
+          <v-list-item v-if="authStore.can('quotations')" prepend-icon="mdi-file-document-edit-outline" title="Quotations" to="/quotations" color="primary" class="mb-2" />
           <v-list-item
             v-if="authStore.can('sales_orders')"
             prepend-icon="mdi-handshake-outline"
@@ -87,6 +85,7 @@
             color="primary"
             class="mb-2"
           ></v-list-item>
+          <v-list-item v-if="authStore.can('employee_tracking') && authStore.user?.role_type !== 'CustomerPortal'" prepend-icon="mdi-account-clock-outline" title="Employee Tracking" to="/employee-tracking" color="primary" class="mb-2" />
           <v-list-item
             v-if="authStore.can('invoices')"
             prepend-icon="mdi-receipt"
@@ -119,6 +118,7 @@
             color="primary"
             class="mb-2"
           ></v-list-item>
+          <v-list-item v-if="configStore.commissionEnabled && authStore.can('commissions') && authStore.user?.role_type !== 'CustomerPortal'" prepend-icon="mdi-percent-circle-outline" title="Commissions" to="/commissions" color="primary" class="mb-2" />
 
           <v-list-item
             v-if="authStore.isAdmin || authStore.can('reports')"
@@ -246,7 +246,7 @@
           </div>
           
           <div class="text-center pb-2">
-              <div class="text-overline text-grey opacity-60" style="font-size: 0.6rem !important;">{{ configStore.appName }} v1.1.0</div>
+              <div class="text-overline text-grey opacity-60" style="font-size: calc(.6rem - var(--dashboard-font-reduction, 0px)) !important;">{{ configStore.appName }} v1.1.0</div>
           </div>
         </div>
       </div>
@@ -262,6 +262,7 @@
 
     <!-- Main Content -->
     <v-main>
+      <div v-if="!drawer" class="px-4 pt-3"><v-btn variant="text" prepend-icon="mdi-menu" rounded="pill" aria-label="Show menu" @click="drawer = true">Show menu</v-btn></div>
       <v-container fluid class="pa-0">
         <!-- Tenant Status Banners -->
         <v-alert
@@ -358,6 +359,8 @@ const helpDialog = ref(false);
 const route = useRoute();
 const authStore = useAuthStore();
 const configStore = useConfigStore();
+const isSageShell = computed(() => configStore.themeName === 'sage');
+provide('toggleDashboardNavigation', () => { drawer.value = !drawer.value; });
 const uiStore = useUIStore();
 const documentStore = useDocumentStore();
 
@@ -367,6 +370,9 @@ const onCustomerFilterChange = (val) => {
 };
 
 onMounted(async () => {
+    // Refresh the session before the optional-auth config endpoint reads tenant settings.
+    // An expired token otherwise returns global defaults while protected requests refresh it.
+    await authStore.fetchMe();
     // Fetch critical system/document data
     await Promise.all([
         configStore.fetchSettings(),
@@ -423,3 +429,30 @@ const logout = () => {
   navigateTo('/login');
 };
 </script>
+
+<style>
+.dashboard-typography { --dashboard-font-reduction: 1px; }
+.dashboard-typography .v-navigation-drawer .v-list-item-title { font-size: calc(.8125rem - 1px); }
+.dashboard-typography.sage-shell .v-navigation-drawer .v-list-item-title { font-size: 13px; }
+.dashboard-typography.sage-shell .sage-brand { font-size: 21px; }
+.dashboard-typography .v-navigation-drawer .text-overline { font-size: calc(.6rem - 1px) !important; }
+.dashboard-typography .v-badge__badge { font-size: calc(.75rem - 1px); }
+.v-theme--sage.sage-shell { --sage-background:radial-gradient(ellipse at 65% -30%,rgba(var(--v-theme-primary),.14),transparent 65%),rgb(var(--v-theme-background)); background:var(--sage-background) !important; background-attachment:fixed !important; }
+.v-theme--sage.sage-shell .v-main { background:transparent !important; }
+.v-theme--sage.sage-shell .v-navigation-drawer { background:transparent !important; border:none !important; box-shadow:none !important; }
+.v-theme--sage.sage-shell .v-navigation-drawer__content { background:transparent !important; }
+@media (max-width:959px) {
+  .v-theme--sage.sage-shell .v-navigation-drawer--temporary { backdrop-filter:blur(24px); background:rgba(var(--v-theme-background),.94) !important; }
+}
+.sage-shell .sage-brand { display:flex; align-items:center; gap:10px; min-height:62px; margin-bottom:0; color:rgb(var(--v-theme-on-surface)); text-decoration:none; font-size:22px; font-weight:700; letter-spacing:-1px; }
+.sage-brand-home { display:flex; align-items:center; gap:10px; color:inherit; text-decoration:none; min-width:0; flex:1; }
+.sage-brand-home > span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sage-shell .sage-brand > .v-btn { margin-left:auto; color:rgb(var(--v-theme-primary)); flex-shrink:0; }
+.sage-shell .sage-brand-mark { display:grid; place-items:center; width:36px; height:36px; border-radius:10px; background:linear-gradient(145deg,rgba(var(--v-theme-primary),.8),rgb(var(--v-theme-primary))); color:white; }
+.sage-shell .v-navigation-drawer .v-list-item { min-height:43px; margin-bottom:3px !important; border-radius:12px; font-size:14px; }
+.sage-shell .v-navigation-drawer .v-list-item__prepend > .v-icon { opacity:.9; margin-inline-end:20px; }
+.sage-shell .v-navigation-drawer .v-list-item-title { font-size:14px; font-weight:500; }
+.sage-shell .v-navigation-drawer .v-list-item + .v-list-item { margin-top:0 !important; }
+.sage-shell .v-navigation-drawer .v-list-item-title,.sage-shell .sage-brand { font-family:Arial,sans-serif; }
+.sage-shell .v-navigation-drawer .v-list-item--active { border-left:3px solid rgb(var(--v-theme-primary)); }
+</style>

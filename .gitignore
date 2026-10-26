@@ -1,4 +1,5 @@
 node_modules/
+.local/
 .env
 .nuxt/
 .output/
@@ -9,3 +10,4 @@ mysql_data/
 uploads/
 backend/backups/*.sql
 backups/*.sql
+backend/.commission-*.cjs

@@ -1,19 +1,13 @@
 const { Op } = require('sequelize');
-const { Customer, Document, DocumentType, Invoice, Expense, ServiceOrder, ServiceType, WalletAccount, sequelize } = require('../models');
+const { Customer, Supplier, Document, DocumentType, Invoice, Expense, ServiceOrder, ServiceType, WalletAccount, sequelize } = require('../models');
 
 /**
  * Get Aggregated Dashboard Statistics
  */
 exports.getStats = async (req, res) => {
   try {
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
-
-    const endOfMonth = new Date();
-    endOfMonth.setMonth(endOfMonth.getMonth() + 1);
-    endOfMonth.setDate(0);
-    endOfMonth.setHours(23, 59, 59, 999);
+    const range = require('../utils/dashboardPeriod')(req.query.period || req.query.interval);
+    const {period,start:startDate,end:endDate} = range;
 
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
@@ -25,18 +19,24 @@ exports.getStats = async (req, res) => {
     const { customer_id } = req.query;
     
     const whereDoc = { tenant_id: tenantId };
-    const whereInvoiceAll = { tenant_id: tenantId, created_at: { [Op.between]: [startOfMonth, endOfMonth] } };
-    const whereInvoicePaid = { tenant_id: tenantId, status: 'Paid', created_at: { [Op.between]: [startOfMonth, endOfMonth] } };
-    const whereExpense = { tenant_id: tenantId, status: 'Paid', created_at: { [Op.between]: [startOfMonth, endOfMonth] } };
+    const whereInvoiceAll = { tenant_id: tenantId, status: { [Op.ne]: 'Cancelled' }, created_at: { [Op.gte]: startDate, [Op.lt]: endDate } };
+    const whereInvoicePaid = { tenant_id: tenantId, status: { [Op.in]: ['Paid', 'Partially Paid'] }, created_at: { [Op.gte]: startDate, [Op.lt]: endDate } };
+    const whereExpense = { tenant_id: tenantId, status: { [Op.in]: ['Paid', 'Partially Paid'] }, created_at: { [Op.gte]: startDate, [Op.lt]: endDate } };
     const whereServiceAll = { tenant_id: tenantId };
     const whereServiceActive = { tenant_id: tenantId, status: { [Op.in]: ['Pending', 'In Progress'] } };
+    const whereInvoiceAged = {
+      tenant_id: tenantId,
+      created_at: { [Op.lt]: require('../utils/invoiceAging').invoiceAgingCutoff('30') }
+    };
 
     if (customer_id) {
       whereDoc.customer_id = customer_id;
       whereInvoiceAll.customer_id = customer_id;
       whereInvoicePaid.customer_id = customer_id;
+      whereExpense.customer_id = customer_id;
       whereServiceAll.customer_id = customer_id;
       whereServiceActive.customer_id = customer_id;
+      whereInvoiceAged.customer_id = customer_id;
     }
 
     if (req.user?.Role?.type === 'CustomerPortal') {
@@ -47,12 +47,14 @@ exports.getStats = async (req, res) => {
         whereInvoicePaid.customer_id = { [Op.in]: [] };
         whereServiceAll.customer_id = { [Op.in]: [] };
         whereServiceActive.customer_id = { [Op.in]: [] };
+        whereInvoiceAged.customer_id = { [Op.in]: [] };
       } else if (!customer_id) {
         whereDoc.customer_id = { [Op.in]: userCustomerIds };
         whereInvoiceAll.customer_id = { [Op.in]: userCustomerIds };
         whereInvoicePaid.customer_id = { [Op.in]: userCustomerIds };
         whereServiceAll.customer_id = { [Op.in]: userCustomerIds };
         whereServiceActive.customer_id = { [Op.in]: userCustomerIds };
+        whereInvoiceAged.customer_id = { [Op.in]: userCustomerIds };
       }
     }
 
@@ -60,6 +62,7 @@ exports.getStats = async (req, res) => {
     const [
       totalCustomers,
       totalAllCustomers,
+      totalSuppliers,
       activeDocuments,
       expiringSoon,
       criticalDocuments,
@@ -68,16 +71,19 @@ exports.getStats = async (req, res) => {
       monthlyCost,
       activeServiceOrders,
       serviceCounts,
-      wallets
+      wallets,
+      agedInvoices,
+      profitTotals
     ] = await Promise.all([
       Customer.count({ where: { tenant_id: tenantId, is_active: true } }),
       Customer.count({ where: { tenant_id: tenantId } }),
+      Supplier.count({ where: { tenant_id: tenantId } }),
       Document.count({ where: whereDoc }),
       Document.count({ where: { ...whereDoc, expiry_date: { [Op.between]: [new Date(), thirtyDaysFromNow] } } }),
       Document.count({ where: { ...whereDoc, expiry_date: { [Op.between]: [new Date(), sevenDaysFromNow] } } }),
-      Invoice.sum('total', { where: whereInvoicePaid }),
+      Invoice.sum('paid_amount', { where: whereInvoicePaid }),
       Invoice.sum('total', { where: whereInvoiceAll }),
-      Expense.sum('amount', { where: whereExpense }),
+      Expense.sum('paid_amount', { where: whereExpense }),
       ServiceOrder.count({ where: whereServiceActive }),
       ServiceOrder.findAll({
         where: whereServiceAll,
@@ -87,7 +93,9 @@ exports.getStats = async (req, res) => {
       WalletAccount.findAll({
         where: { tenant_id: tenantId, is_active: true },
         attributes: ['id', 'name', 'balance', 'currency']
-      })
+      }),
+      Invoice.count({ where: whereInvoiceAged }),
+      require('../utils/profitTotals')(whereInvoiceAll, {tenant_id:tenantId,...(customer_id ? {customer_id} : {}),created_at:{[Op.gte]:startDate,[Op.lt]:endDate}})
     ]);
 
     const revenuePaid = parseFloat(monthlyPaid || 0);
@@ -113,15 +121,21 @@ exports.getStats = async (req, res) => {
       success: true,
       data: {
         total_customers: totalAllCustomers,
+        total_suppliers: totalSuppliers,
         active_customers: totalCustomers,
         active_documents: activeDocuments,
         expiring_soon: expiringSoon,
         critical_count: criticalDocuments,
+        period,
+        date_range: { from:range.from, to:range.to, timezone:'Asia/Dubai' },
         monthly_revenue: revenuePaid,
         monthly_receivable: revenueTotal,
         monthly_cost: cost,
-        monthly_profit: revenuePaid - cost,
+        monthly_service_charges: profitTotals.service_charges,
+        monthly_expenses: profitTotals.expenses,
+        monthly_profit: profitTotals.net_profit,
         active_service_orders: activeServiceOrders,
+        aged_invoices: agedInvoices || 0,
         service_overview: serviceOverview,
         wallet_balances: wallets
       }

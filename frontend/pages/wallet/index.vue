@@ -11,7 +11,7 @@
       </v-col>
       <v-col cols="12" md="6" class="d-flex align-center justify-md-end flex-wrap" style="gap: 16px;">
         <v-btn
-          v-if="auth.can('wallet', 'write')"
+          v-if="auth.can('wallet', 'create')"
           color="success"
           prepend-icon="mdi-plus"
           rounded="lg"
@@ -23,7 +23,7 @@
           Add Wallet
         </v-btn>
         <v-btn
-          v-if="auth.can('wallet', 'write')"
+          v-if="auth.can('wallet', 'edit')"
           color="primary"
           prepend-icon="mdi-swap-horizontal"
           rounded="lg"
@@ -82,7 +82,7 @@
                 <v-chip size="x-small" :color="account.balance < 0 ? 'error' : 'success'" class="font-weight-bold" style="font-size: 10px; height: 18px;">
                   {{ account.balance < 0 ? 'DEBT' : 'POSITIVE' }}
                 </v-chip>
-                <v-btn v-if="auth.can('wallet', 'write')" icon="mdi-pencil" variant="text" size="x-small" color="grey-darken-1" @click="openEditWallet(account)"></v-btn>
+                <v-btn v-if="auth.canRecord('wallet', 'edit', account)" icon="mdi-pencil" variant="text" size="x-small" color="grey-darken-1" @click="openEditWallet(account)"></v-btn>
               </div>
             </div>
             <div class="text-caption font-weight-bold opacity-60 text-uppercase mb-1">{{ account.name }}</div>
@@ -109,14 +109,15 @@
         <v-col v-for="account in walletStore.debitAccounts" :key="account.id" cols="12" sm="6" md="3">
           <v-card variant="flat" class="pa-4 rounded-xl border bg-surface account-card position-relative overflow-hidden">
             <div class="d-flex align-center justify-space-between mb-3">
-              <div class="account-icon-wrapper-small rounded-lg bg-secondary-container">
-                <v-icon size="small" color="secondary">mdi-bank</v-icon>
+              <div class="account-icon-wrapper-small rounded-lg overflow-hidden bg-white d-flex align-center justify-center border" style="padding: 2px;">
+                <v-img v-if="getBankLogo(account.name)" :src="getBankLogo(account.name)" contain style="width: 100%; height: 100%;"></v-img>
+                <v-icon v-else size="small" color="secondary">mdi-bank</v-icon>
               </div>
               <div class="d-flex align-center gap-1">
                 <v-chip size="x-small" :color="account.balance < 0 ? 'error' : 'success'" class="font-weight-bold" style="font-size: 10px; height: 18px;">
                   {{ account.balance < 0 ? 'DEBT' : 'POSITIVE' }}
                 </v-chip>
-                <v-btn v-if="auth.can('wallet', 'write')" icon="mdi-pencil" variant="text" size="x-small" color="grey-darken-1" @click="openEditWallet(account)"></v-btn>
+                <v-btn v-if="auth.canRecord('wallet', 'edit', account)" icon="mdi-pencil" variant="text" size="x-small" color="grey-darken-1" @click="openEditWallet(account)"></v-btn>
               </div>
             </div>
             <div class="text-caption font-weight-bold opacity-60 text-uppercase mb-1">{{ account.name }}</div>
@@ -145,14 +146,15 @@
             <div class="card-glow" style="background: rgba(186, 26, 26, 0.03);"></div>
 
             <div class="d-flex align-center justify-space-between mb-3">
-              <div class="account-icon-wrapper-small rounded-lg" style="background: rgba(186, 26, 26, 0.08);">
-                <v-icon size="small" color="error">mdi-credit-card-outline</v-icon>
+              <div class="account-icon-wrapper-small rounded-lg overflow-hidden d-flex align-center justify-center border bg-white" style="padding: 2px;">
+                <v-img v-if="getBankLogo(account.name)" :src="getBankLogo(account.name)" contain style="width: 100%; height: 100%;"></v-img>
+                <v-icon v-else size="small" color="error">mdi-credit-card-outline</v-icon>
               </div>
               <div class="d-flex align-center gap-1">
                 <v-chip size="x-small" color="error" variant="tonal" class="font-weight-bold" style="font-size: 10px; height: 18px;">
                   CREDIT
                 </v-chip>
-                <v-btn v-if="auth.can('wallet', 'write')" icon="mdi-pencil" variant="text" size="x-small" color="grey-darken-1" @click="openEditWallet(account)"></v-btn>
+                <v-btn v-if="auth.canRecord('wallet', 'edit', account)" icon="mdi-pencil" variant="text" size="x-small" color="grey-darken-1" @click="openEditWallet(account)"></v-btn>
               </div>
             </div>
 
@@ -329,6 +331,7 @@
              {{ item.reference_type }} #{{ item.reference_id }}
            </v-btn>
            <span v-else class="text-caption opacity-40 italic font-mono px-2">SYSTEM_ENTRY</span>
+           <DocumentExport v-if="item.reference_type === 'Invoice' && item.type === 'Income' && item.direction === 'In'" :record-id="item.id" :types="['receipt']" label="Receipt PDF" />
         </template>
       </v-data-table-server>
     </v-card>
@@ -372,7 +375,34 @@
               </v-btn>
             </v-btn-toggle>
 
+            <v-combobox
+              v-if="walletData.account_type === 'Debit' || walletData.account_type === 'Credit'"
+              v-model="walletData.name"
+              :items="uaeBanks"
+              item-title="title"
+              item-value="value"
+              :return-object="false"
+              label="Bank Name *"
+              variant="outlined"
+              density="comfortable"
+              :rules="[v => !!v || 'Bank Name is required']"
+              hint="Select a bank or type a custom name"
+              required
+            >
+              <template v-slot:item="{ props, item }">
+                <v-list-item v-bind="props">
+                  <template v-slot:prepend>
+                    <v-avatar size="30" class="mr-3 border bg-white" rounded style="padding: 2px;">
+                      <v-img v-if="item.raw.logo" :src="item.raw.logo" contain></v-img>
+                      <v-icon v-else>mdi-bank</v-icon>
+                    </v-avatar>
+                  </template>
+                </v-list-item>
+              </template>
+            </v-combobox>
+
             <v-text-field
+              v-else
               v-model="walletData.name"
               label="Wallet Name *"
               variant="outlined"
@@ -515,6 +545,46 @@ const dayOptions = Array.from({ length: 31 }, (_, i) => ({
   title: `${i + 1}${ordinal(i + 1).replace(String(i + 1), '')}`,
   value: i + 1
 }));
+
+const uaeBanks = [
+  { title: 'Habib Bank AG Zurich', value: 'Habib Bank AG Zurich', logo: '/banks/Habib Bank.jpeg' },
+  { title: 'Ruya Bank', value: 'Ruya Bank', logo: '/banks/Ruya Bank.jpeg' },
+  { title: 'Al Maryah Community Bank', value: 'Al Maryah Community Bank', logo: '/banks/Maryah Bank.jpeg' },
+  { title: 'Wio Bank', value: 'Wio Bank', logo: '/banks/Wio Bank.jpeg' },
+  { title: 'Bank of Baroda', value: 'Bank of Baroda', logo: '/banks/Bank of Baroda.jpeg' },
+  { title: 'Citi Bank', value: 'Citi Bank', logo: '/banks/Citi Bank.jpeg' },
+  { title: 'Al Hilal Bank', value: 'Al Hilal Bank', logo: '/banks/Hilal Bank.jpeg' },
+  { title: 'Ajman Bank', value: 'Ajman Bank', logo: '/banks/Ajman Bank.jpeg' },
+  { title: 'National Bank of Fujairah (NBF)', value: 'National Bank of Fujairah (NBF)', logo: '/banks/NBF.jpeg' },
+  { title: 'HSBC', value: 'HSBC', logo: '/banks/HSBC.jpeg' },
+  { title: 'RAKBANK', value: 'RAKBANK', logo: '/banks/Rak Bank.jpeg' },
+  { title: 'Sharjah Islamic Bank (SIB)', value: 'Sharjah Islamic Bank (SIB)', logo: '/banks/SIB.jpeg' },
+  { title: 'Standard Chartered', value: 'Standard Chartered', logo: '/banks/Standard Chartered.jpeg' },
+  { title: 'Abu Dhabi Islamic Bank (ADIB)', value: 'Abu Dhabi Islamic Bank (ADIB)', logo: '/banks/ADIB.jpeg' },
+  { title: 'Commercial Bank of Dubai (CBD)', value: 'Commercial Bank of Dubai (CBD)', logo: '/banks/CBD.jpeg' },
+  { title: 'Dubai Islamic Bank (DIB)', value: 'Dubai Islamic Bank (DIB)', logo: '/banks/DIB.jpeg' },
+  { title: 'Emirates Islamic', value: 'Emirates Islamic', logo: '/banks/Emirates Islamic.jpeg' },
+  { title: 'Mashreq Bank', value: 'Mashreq Bank', logo: '/banks/Mashreq.jpeg' },
+  { title: 'Abu Dhabi Commercial Bank (ADCB)', value: 'Abu Dhabi Commercial Bank (ADCB)', logo: '/banks/ADCB.jpeg' },
+  { title: 'Emirates NBD', value: 'Emirates NBD', logo: '/banks/Emirates NBD.jpeg' },
+  { title: 'First Abu Dhabi Bank (FAB)', value: 'First Abu Dhabi Bank (FAB)', logo: '/banks/FAB.jpeg' },
+  { title: 'Other', value: 'Other', logo: '/banks/OTHER.png' }
+];
+
+const getBankLogo = (accountName) => {
+  if (!accountName) return null;
+  const lowerName = accountName.toLowerCase();
+  const match = uaeBanks.find(b => {
+    const title = b.title.toLowerCase();
+    if (lowerName.startsWith(title)) return true;
+    if (title.includes('(')) {
+      const abbr = title.split('(')[1].replace(')', '').trim();
+      if (lowerName.startsWith(abbr)) return true;
+    }
+    return false;
+  });
+  return match ? match.logo : null;
+};
 
 const headers = [
   { title: 'Date / Time', key: 'created_at', sortable: false },
@@ -701,8 +771,8 @@ const getReferenceRoute = (item) => {
     box-shadow: 0 12px 32px -4px rgba(0,0,0,0.12) !important;
 }
 .account-icon-wrapper-small {
-    width: 32px;
-    height: 32px;
+    width: 40px;
+    height: 40px;
     display: flex;
     align-items: center;
     justify-content: center;

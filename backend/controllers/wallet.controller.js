@@ -81,16 +81,6 @@ exports.getAccounts = async (req, res) => {
             created_at: { [Op.lt]: lastBillDate }
           }
         }) || 0;
-        // Payments received toward bill (inflows before lastBillDate)
-        const billedIn = await WalletTransaction.sum('amount', {
-          where: { 
-            account_id: account.id, 
-            direction: 'In', 
-            tenant_id: req.user.tenant_id,
-            created_at: { [Op.lt]: lastBillDate }
-          }
-        }) || 0;
-
         // Unbilled: outflows after lastBillDate (current cycle spending)
         const unbilledOut = await WalletTransaction.sum('amount', {
           where: { 
@@ -100,23 +90,13 @@ exports.getAccounts = async (req, res) => {
             created_at: { [Op.gte]: lastBillDate }
           }
         }) || 0;
-        // Payments made in current (unbilled) cycle
-        const unbilledIn = await WalletTransaction.sum('amount', {
-          where: { 
-            account_id: account.id, 
-            direction: 'In', 
-            tenant_id: req.user.tenant_id,
-            created_at: { [Op.gte]: lastBillDate }
-          }
-        }) || 0;
-
         // Total payments received (all time)
         const totalPaid = parseFloat(inSum);
 
         // Gross billed amount (total purchases before last bill date)
         const totalBilled = parseFloat(billedOut);
-        // How much was paid toward the billed amount
-        const paidTowardBill = parseFloat(billedIn);
+        // Apply all payments to billed debt first, including payments after billing.
+        const paidTowardBill = Math.min(totalBilled, totalPaid);
         // Remaining due for the current bill
         const billedRemaining = Math.max(0, totalBilled - paidTowardBill);
 
@@ -129,7 +109,8 @@ exports.getAccounts = async (req, res) => {
         result.billed_remaining = billedRemaining;
         // Net billed (for backward compat)
         result.billed_amount = billedRemaining;
-        result.unbilled_amount = Math.max(0, parseFloat(unbilledOut) - parseFloat(unbilledIn));
+        const paymentsBeyondBill = Math.max(0, totalPaid - totalBilled);
+        result.unbilled_amount = Math.max(0, parseFloat(unbilledOut) - paymentsBeyondBill);
         // Total payments all time
         result.total_paid = totalPaid;
         // Dates

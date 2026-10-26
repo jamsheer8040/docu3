@@ -1,0 +1,36 @@
+/* One pixel smaller shared typography. Keep the root at 16px so rem-based
+   spacing, control dimensions and icon sizes retain their existing scale. */
+.v-application, .v-overlay-container { font-size:15px; }
+html .text-h1 { font-size:95px !important; }
+html .text-h2 { font-size:59px !important; }
+html .text-h3 { font-size:47px !important; }
+html .text-h4 { font-size:33px !important; }
+html .text-h5 { font-size:23px !important; }
+html .text-h6 { font-size:19px !important; }
+html .text-subtitle-1, html .text-body-1 { font-size:15px !important; }
+html .text-subtitle-2, html .text-body-2 { font-size:13px !important; }
+html .text-caption { font-size:11px !important; }
+html .text-overline { font-size:11px !important; }
+html .v-table { font-size:13px; }
+html .v-label, html .v-field, html .v-field__input,
+html .v-field input, html .v-field textarea,
+html .v-select__selection, html .v-autocomplete__selection { font-size:15px; }
+html .v-field-label--floating { font-size:11px; }
+html .v-btn--size-x-small:not(.v-btn--icon) { font-size:9px; }
+html .v-btn--size-small:not(.v-btn--icon) { font-size:11px; }
+html .v-btn--size-default:not(.v-btn--icon) { font-size:13px; }
+html .v-btn--size-large:not(.v-btn--icon) { font-size:15px; }
+html .v-btn--size-x-large:not(.v-btn--icon) { font-size:17px; }
+html .v-chip--size-x-small { font-size:9px !important; }
+html .v-chip--size-small { font-size:11px; }
+html .v-chip--size-default { font-size:13px; }
+html .v-badge__badge { font-size:11px; }
+html .v-list-item-title { font-size:15px; }
+html .v-list-item-subtitle { font-size:13px; }
+html .v-card-title { font-size:19px; }
+html .v-card-subtitle { font-size:13px; }
+html .v-data-table-footer { font-size:13px; }
+/* Theme-specific overrides use the same reduction. */
+html .v-theme--classic .search-pill input,
+html .v-theme--classic .search-pill .v-field__input { font-size:calc(.85rem - 1px) !important; }
+html .v-theme--classic .v-data-table .v-data-table-header__content { font-size:calc(.72rem - 1px) !important; }

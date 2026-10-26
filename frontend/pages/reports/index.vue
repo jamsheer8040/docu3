@@ -255,7 +255,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useReportStore } from '~/stores/reports';
 import EmptyState from '~/components/common/EmptyState.vue';
 import ExpenseReport from '~/components/reports/ExpenseReport.vue';
@@ -267,8 +267,18 @@ import dayjs from 'dayjs';
 
 const reportStore = useReportStore();
 
-const activeMainTab = ref('insights');
-const activeReportTab = ref('expense');
+const route = useRoute();
+const activeMainTab = ref(['invoice', 'profit'].includes(route.query.report) ? 'reports' : 'insights');
+const activeReportTab = ref(['invoice', 'profit'].includes(route.query.report) ? route.query.report : 'expense');
+watch(() => route.query.report, report => {
+  if (['invoice', 'profit'].includes(report)) { activeMainTab.value = 'reports'; activeReportTab.value = report; }
+  if (report === 'financial') activeMainTab.value = 'insights';
+});
+const reportDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : '';
+function applyLinkedPeriod() {
+  const from = reportDate(route.query.from), to = reportDate(route.query.to);
+  if (from && to) { reportStore.setFilters(from, to); activePreset.value = 'Custom'; }
+}
 
 const activePreset = ref('This Month');
 const presets = ['Today', 'This Month', 'Financial Year', 'Custom'];
@@ -394,8 +404,10 @@ const donutChartSeries = computed(() =>
 );
 
 onMounted(() => {
+    applyLinkedPeriod();
     refreshData();
 });
+watch(() => [route.query.from, route.query.to], () => { applyLinkedPeriod(); refreshData(); });
 
 const refreshData = () => {
     reportStore.fetchAllReports();

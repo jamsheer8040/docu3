@@ -1,50 +1,123 @@
 <template>
-  <v-container fluid class="leads-page py-8 px-6">
-    <div class="d-flex justify-space-between align-center mb-8">
-      <div>
-        <h1 class="text-h3 font-weight-black text-gradient mb-1">Lead Management</h1>
-        <p class="text-subtitle-1 text-secondary font-weight-medium">Track and convert potential customers</p>
-      </div>
-      <div class="d-flex gap-4">
-        <div class="bg-white border rounded-pill d-flex align-center pa-1 elevation-1 mr-4" style="height: 48px;">
+  <v-container fluid class="leads-page py-6 px-6">
+    <!-- Header -->
+    <v-row class="mb-6 align-start">
+      <v-col cols="12" md="7">
+        <div class="text-caption text-uppercase font-weight-bold opacity-60 color-primary mb-1" style="letter-spacing: 0.08em;">
+          LEADS
+        </div>
+        <h1 class="text-h4 font-weight-black color-primary">Lead Management</h1>
+        <p class="text-subtitle-1 text-grey-darken-1 mt-1">Track potential customers and plan the next conversation</p>
+        <!-- View Toggle -->
+        <div class="view-toggle-pill d-inline-flex align-center pa-1 mt-3" style="height: 40px;">
           <v-btn
-            :class="['text-none font-weight-bold px-6 rounded-pill', viewMode === 'list' ? 'active-toggle' : 'text-grey-darken-3']"
+            :class="['text-none font-weight-bold px-4 rounded-pill', viewMode === 'list' ? 'classic-toggle-active' : 'text-grey-darken-3']"
             :variant="viewMode === 'list' ? 'flat' : 'text'"
             @click="viewMode = 'list'"
-            height="40"
+            height="32"
+            size="small"
           >
-            <v-icon start size="20">mdi-format-list-bulleted</v-icon>
+            <v-icon start size="18">mdi-format-list-bulleted</v-icon>
             List
           </v-btn>
           <v-btn
-            :class="['text-none font-weight-bold px-6 rounded-pill ml-1', viewMode === 'kanban' ? 'active-toggle' : 'text-grey-darken-3']"
+            :class="['text-none font-weight-bold px-4 rounded-pill ml-1', viewMode === 'kanban' ? 'classic-toggle-active' : 'text-grey-darken-3']"
             :variant="viewMode === 'kanban' ? 'flat' : 'text'"
             @click="viewMode = 'kanban'"
-            height="40"
+            height="32"
+            size="small"
           >
-            <v-icon start size="20">mdi-view-column</v-icon>
+            <v-icon start size="18">mdi-view-column</v-icon>
             Kanban
           </v-btn>
         </div>
+      </v-col>
+      <v-col cols="12" md="5" class="lead-header-actions d-flex align-center justify-md-end ga-2 flex-wrap">
+        <v-btn variant="tonal" color="primary" prepend-icon="mdi-download-outline" height="34" size="small" :loading="exporting" :disabled="!filteredLeads.length" @click="downloadExcel">Excel</v-btn>
+        <v-btn v-if="authStore.can('leads', 'create')" variant="tonal" color="primary" prepend-icon="mdi-upload-outline" height="34" size="small" @click="importVisible=true">Import Excel</v-btn>
         <v-btn
-          class="btn-standard"
-          size="large"
-          prepend-icon="mdi-plus-circle"
+          color="primary"
+          prepend-icon="mdi-plus"
+          rounded="lg"
+          elevation="0"
+          height="34"
+          size="small"
+          class="px-4 font-weight-bold text-capitalize"
+          v-if="authStore.can('leads', 'create')"
           @click="openCreateDialog"
         >
           Add Lead
         </v-btn>
-      </div>
-    </div>
+      </v-col>
+    </v-row>
+
+    <!-- KPI Summary Cards Row -->
+    <v-row class="mb-6">
+      <!-- Card 1: Total Leads -->
+      <v-col cols="12" sm="6" md="3">
+        <v-card class="pa-5 soft-card d-flex align-center gap-4" height="100%" variant="flat" rounded="xl">
+          <div class="pa-3 rounded-xl d-flex align-center justify-center" style="background: rgba(79, 66, 148, 0.1); color: #4F4294; min-width: 48px; height: 48px;">
+            <v-icon size="default">mdi-account-group-outline</v-icon>
+          </div>
+          <div>
+            <div class="text-caption font-weight-bold opacity-60 text-uppercase mb-1">Total Leads</div>
+            <div class="text-h5 font-weight-black color-primary mb-1">{{ leadStore.leads.length }}</div>
+            <div class="text-caption font-weight-bold text-success">&uarr; 10% <span class="opacity-60 font-weight-regular text-grey">vs. last month</span></div>
+          </div>
+        </v-card>
+      </v-col>
+
+      <!-- Card 2: New / Contacted -->
+      <v-col cols="12" sm="6" md="3">
+        <v-card class="pa-5 soft-card d-flex align-center gap-4" height="100%" variant="flat" rounded="xl">
+          <div class="pa-3 rounded-xl d-flex align-center justify-center" style="background: rgba(79, 66, 148, 0.1); color: #4F4294; min-width: 48px; height: 48px;">
+            <v-icon size="default">mdi-account-clock-outline</v-icon>
+          </div>
+          <div>
+            <div class="text-caption font-weight-bold opacity-60 text-uppercase mb-1">In Pipeline</div>
+            <div class="text-h5 font-weight-black text-info mb-1">{{ newAndContactedCount }}</div>
+            <div class="text-caption font-weight-bold text-success">&uarr; 8% <span class="opacity-60 font-weight-regular text-grey">vs. last month</span></div>
+          </div>
+        </v-card>
+      </v-col>
+
+      <!-- Card 3: Qualified -->
+      <v-col cols="12" sm="6" md="3">
+        <v-card class="pa-5 soft-card d-flex align-center gap-4" height="100%" variant="flat" rounded="xl">
+          <div class="pa-3 rounded-xl d-flex align-center justify-center" style="background: rgba(79, 66, 148, 0.1); color: #4F4294; min-width: 48px; height: 48px;">
+            <v-icon size="default">mdi-check-decagram-outline</v-icon>
+          </div>
+          <div>
+            <div class="text-caption font-weight-bold opacity-60 text-uppercase mb-1">Qualified</div>
+            <div class="text-h5 font-weight-black color-primary mb-1">{{ qualifiedCount }}</div>
+            <div class="text-caption font-weight-bold text-success">&uarr; 15% <span class="opacity-60 font-weight-regular text-grey">vs. last month</span></div>
+          </div>
+        </v-card>
+      </v-col>
+
+      <!-- Card 4: Follow-up -->
+      <v-col cols="12" sm="6" md="3">
+        <v-card class="pa-5 soft-card d-flex align-center gap-4" height="100%" variant="flat" rounded="xl">
+          <div class="pa-3 rounded-xl d-flex align-center justify-center" style="background: rgba(79, 66, 148, 0.1); color: #4F4294; min-width: 48px; height: 48px;">
+            <v-icon size="default">mdi-trophy-outline</v-icon>
+          </div>
+          <div>
+            <div class="text-caption font-weight-bold opacity-60 text-uppercase mb-1">On Follow-up</div>
+            <div class="text-h5 font-weight-black text-success mb-1">{{ followUpCount }}</div>
+            <div class="text-caption font-weight-bold text-success">&uarr; 20% <span class="opacity-60 font-weight-regular text-grey">vs. last month</span></div>
+          </div>
+        </v-card>
+      </v-col>
+    </v-row>
 
     <!-- Search & Filters -->
-    <v-card class="soft-card mb-6 pa-4" variant="flat">
+    <v-card class="soft-card mb-6 pa-4" variant="flat" rounded="xl">
       <v-row align="center">
-        <v-col cols="12" sm="4">
+        <v-col cols="12" sm="6" md="3">
           <v-text-field
             v-model="search"
             prepend-inner-icon="mdi-magnify"
-            placeholder="Search..."
+            placeholder="Search leads..."
             variant="solo"
             flat
             density="comfortable"
@@ -52,10 +125,17 @@
             class="search-pill"
           ></v-text-field>
         </v-col>
-        <v-col cols="12" sm="4" v-if="viewMode === 'list'">
+        <v-col cols="12" sm="6" md="2">
+          <v-autocomplete v-model="serviceFilter" :items="serviceOptions" label="Service" clearable variant="solo" flat density="comfortable" hide-details class="search-pill" />
+        </v-col>
+        <v-col cols="12" sm="6" md="2">
+          <v-select v-model="sourceFilter" :items="sourceOptions" label="Source" clearable variant="solo" flat density="comfortable" hide-details class="search-pill" />
+        </v-col>
+        <v-col cols="12" sm="6" md="2">
           <v-select
             v-model="statusFilter"
-            :items="['All', 'New', 'Contacted', 'Qualified', 'Won', 'Lost']"
+            :items="statusOptions"
+            label="Status"
             prepend-inner-icon="mdi-filter-variant"
             placeholder="Filter by Status"
             variant="solo"
@@ -65,19 +145,25 @@
             class="search-pill"
           ></v-select>
         </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-select v-model="followUpSort" :items="followUpSortOptions" label="Sort follow-up" variant="solo" flat density="comfortable" hide-details class="search-pill" />
+        </v-col>
       </v-row>
+      <div class="d-flex align-center justify-space-between flex-wrap ga-3 mt-3"><span class="text-caption text-medium-emphasis" role="status">{{ filteredLeads.length }} of {{ leadStore.leads.length }} leads</span><v-btn variant="text" rounded="pill" prepend-icon="mdi-filter-remove-outline" :disabled="!hasFilters" @click="resetFilters">Reset filters</v-btn></div>
     </v-card>
 
     <!-- ═══════════════════════════════════════ -->
     <!-- LIST VIEW                              -->
     <!-- ═══════════════════════════════════════ -->
-    <v-card v-if="viewMode === 'list'" class="soft-card overflow-hidden" variant="flat">
+    <v-card v-if="viewMode === 'list'" class="soft-card overflow-hidden" variant="flat" rounded="xl">
       <v-data-table
+        v-model:page="listPage"
+        v-model:sort-by="tableSort"
         :headers="headers"
+        :cell-props="leadCellProps"
         :items="filteredLeads"
-        :search="search"
         :loading="leadStore.loading"
-        class="bg-transparent cursor-pointer"
+        class="bg-transparent lead-list-table"
         hover
       >
         <template v-slot:item.name="{ item }">
@@ -86,7 +172,8 @@
               {{ (item.company_name || item.name || '?').charAt(0).toUpperCase() }}
             </v-avatar>
             <div>
-              <div class="font-weight-bold text-body-1">{{ item.company_name }}</div>
+              <NuxtLink v-if="authStore.canRecord('leads', 'detail', item)" :to="`/leads/${item.id}`" class="font-weight-bold text-body-1 text-primary text-decoration-none" @click.stop>{{ item.company_name }}</NuxtLink><span v-else class="font-weight-bold text-body-1 text-primary">{{ item.company_name }}</span>
+              <v-chip v-if="item.lead_type" size="x-small" variant="tonal" color="primary" class="ml-2" :title="item.lead_type === 'Person' ? 'Personal lead' : 'Company lead'">{{ item.lead_type === 'Person' ? 'B2C' : 'B2B' }}</v-chip>
               <div class="text-caption text-secondary" v-if="item.name">{{ item.name }}</div>
             </div>
           </div>
@@ -125,7 +212,7 @@
 
         <!-- Service column -->
         <template v-slot:item.service="{ item }">
-          <v-chip v-if="item.Service" size="small" variant="tonal" color="primary" class="font-weight-medium">
+          <v-chip v-if="item.Service" size="small" variant="tonal" :color="serviceColor(item.Service)" class="font-weight-medium">
             <v-icon size="x-small" class="mr-1">mdi-briefcase</v-icon>
             {{ item.Service.name }}
           </v-chip>
@@ -133,7 +220,9 @@
         </template>
 
         <!-- Status column - clickable dropdown -->
+        <template #item.assigned_user_id="{ item }"><ServiceStaffAvatar :staff="item.AssignedStaff" unassigned-marker="?" unassigned-label="Unassigned lead" /></template>
         <template v-slot:item.status="{ item }">
+          <div class="d-flex align-center ga-1 flex-wrap">
           <v-menu location="bottom">
             <template v-slot:activator="{ props }">
               <v-chip
@@ -141,7 +230,7 @@
                 :color="getStatusColor(item.status)"
                 size="small"
                 variant="flat"
-                class="font-weight-bold px-3 text-uppercase cursor-pointer"
+                class="lead-status-badge font-weight-bold px-3 text-uppercase cursor-pointer"
                 style="letter-spacing: 0.5px"
                 append-icon="mdi-chevron-down"
               >
@@ -153,7 +242,7 @@
                 v-for="status in kanbanColumns"
                 :key="status"
                 @click="updateLeadStatus(item, status)"
-                :disabled="status === item.status"
+                :disabled="status === item.status || !authStore.canRecord('leads', 'edit', item)"
               >
                 <v-list-item-title class="d-flex align-center">
                   <v-chip :color="getStatusColor(status)" size="x-small" class="mr-2" style="width: 12px; height: 12px;"></v-chip>
@@ -162,8 +251,11 @@
               </v-list-item>
             </v-list>
           </v-menu>
+          <v-chip v-if="item.quote_sent" size="x-small" variant="tonal" color="info">Quote Sent</v-chip>
+          </div>
         </template>
 
+        <template v-slot:item.follow_up="{ item }"><LeadFollowUpAction :lead="item" compact @saved="leadStore.fetchLeads()" /></template>
         <!-- Date column -->
         <template v-slot:item.created_at="{ item }">
           <span class="text-caption text-secondary">{{ formatDate(item.created_at) }}</span>
@@ -171,55 +263,24 @@
 
         <!-- Actions column -->
         <template v-slot:item.actions="{ item }">
-          <div class="d-flex align-center justify-end gap-2">
-            <!-- Won lead: conversion buttons -->
-            <template v-if="item.status === 'Won'">
-              <v-btn
-                v-if="item.customer_id && !item.converted_at"
-                variant="text"
-                color="success"
-                size="small"
-                class="font-weight-bold"
-                prepend-icon="mdi-check"
-                :to="`/customers/${item.customer_id}`"
-              >
-                Existing Customer
-              </v-btn>
-              <v-btn
-                v-else-if="item.converted_at"
-                variant="text"
-                color="success"
-                size="small"
-                class="font-weight-bold"
-                prepend-icon="mdi-check-decagram"
-                :to="`/customers/${item.customer_id}`"
-              >
-                Converted
-              </v-btn>
-              <v-btn
-                v-else
-                variant="tonal"
-                color="primary"
-                size="small"
-                class="font-weight-bold"
-                :loading="convertingId === item.id"
-                @click.stop="executeConvert(item)"
-                v-show="authStore.can('customers', 'write')"
-              >
-                Convert to Customer
-              </v-btn>
-            </template>
-
+          <div class="d-flex align-center justify-end">
             <v-btn
               icon="mdi-pencil"
+              width="32"
+              height="32"
+              v-if="authStore.canRecord('leads', 'edit_form', item)"
+              aria-label="Edit lead"
               variant="text"
               color="primary"
               size="small"
               @click.stop="openEditDialog(item)"
             ></v-btn>
             <v-btn
-              v-if="authStore.can('customers', 'delete')"
+              v-if="authStore.canRecord('leads', 'delete', item)"
               icon="mdi-delete"
+              width="32"
+              height="32"
+              aria-label="Delete lead"
               variant="text"
               color="error"
               size="small"
@@ -255,15 +316,17 @@
             <v-card
               v-for="lead in getLeadsByStatus(column)"
               :key="lead.id"
-              class="kanban-card soft-card cursor-pointer"
+              class="kanban-card soft-card cursor-pointer mb-3"
               variant="flat"
-              draggable="true"
+              :draggable="authStore.canRecord('leads', 'edit', lead)"
               @dragstart="onDragStart($event, lead)"
-              @click="openEditDialog(lead)"
+              @click="authStore.canRecord('leads', 'detail', lead) && navigateTo(`/leads/${lead.id}`)"
             >
               <v-card-text class="pa-3">
                 <div class="d-flex justify-space-between align-start mb-2">
+                  <ServiceStaffAvatar :staff="lead.AssignedStaff" unassigned-marker="?" unassigned-label="Unassigned lead" class="mr-2" />
                   <div class="font-weight-bold text-body-2 text-truncate flex-grow-1 mr-1">{{ lead.company_name }}</div>
+                  <v-chip v-if="lead.lead_type" size="x-small" variant="tonal" color="primary" :title="lead.lead_type === 'Person' ? 'Personal lead' : 'Company lead'">{{ lead.lead_type === 'Person' ? 'B2C' : 'B2B' }}</v-chip>
                   <v-btn
                     v-if="authStore.can('customers', 'delete')"
                     icon="mdi-delete"
@@ -277,10 +340,11 @@
                 <div class="text-caption text-secondary mb-2" v-if="lead.name">
                   <v-icon size="x-small" class="mr-1">mdi-account</v-icon>{{ lead.name }}
                 </div>
+                <div v-if="lead.quote_sent" class="d-flex ga-1 mb-2"><v-chip size="x-small" variant="tonal">{{ lead.status }}</v-chip><v-chip size="x-small" variant="tonal" color="info">Quote Sent</v-chip></div>
 
-                <div v-if="lead.Service" class="d-flex align-center text-caption text-primary font-weight-medium mb-1">
+                <v-chip v-if="lead.Service" size="small" variant="tonal" :color="serviceColor(lead.Service)" class="font-weight-medium mb-1">
                   <v-icon size="x-small" class="mr-1">mdi-briefcase</v-icon>{{ lead.Service.name }}
-                </div>
+                </v-chip>
 
                 <div v-if="lead.source" class="d-flex align-center text-caption text-secondary mb-1">
                   <v-icon size="x-small" class="mr-1">mdi-tag-outline</v-icon>{{ lead.source }}
@@ -316,43 +380,7 @@
                 <div class="d-flex justify-space-between align-center mt-2 pt-2 border-t">
                   <span class="text-caption text-grey-darken-1">{{ formatDate(lead.created_at) }}</span>
 
-                  <!-- Won card: convert button -->
-                  <div v-if="lead.status === 'Won'">
-                    <v-btn
-                      v-if="lead.customer_id && !lead.converted_at"
-                      variant="text"
-                      color="success"
-                      size="x-small"
-                      class="font-weight-bold px-1"
-                      prepend-icon="mdi-check"
-                      :to="`/customers/${lead.customer_id}`"
-                    >
-                      Existing
-                    </v-btn>
-                    <v-btn
-                      v-else-if="lead.converted_at"
-                      variant="text"
-                      color="success"
-                      size="x-small"
-                      class="font-weight-bold px-1"
-                      prepend-icon="mdi-check-decagram"
-                      :to="`/customers/${lead.customer_id}`"
-                    >
-                      Converted
-                    </v-btn>
-                    <v-btn
-                      v-else
-                      variant="tonal"
-                      color="primary"
-                      size="x-small"
-                      class="font-weight-bold"
-                      :loading="convertingId === lead.id"
-                      @click.stop="executeConvert(lead)"
-                      v-show="authStore.can('customers', 'write')"
-                    >
-                      Convert
-                    </v-btn>
-                  </div>
+                  <LeadFollowUpAction :lead="lead" compact @saved="leadStore.fetchLeads()" />
                 </div>
               </v-card-text>
             </v-card>
@@ -367,6 +395,7 @@
       </div>
     </div>
 
+    <LeadFollowUpAction v-if="scheduleLead" ref="scheduleAction" :lead="scheduleLead" class="d-none" @saved="leadStore.fetchLeads()" />
     <!-- Lead Create/Edit Dialog -->
     <LeadDialog
       v-if="dialogVisible"
@@ -375,6 +404,7 @@
       @saved="onSaved"
     />
 
+    <LeadImportDialog v-model="importVisible" @saved="leadStore.fetchLeads()" />
     <!-- Delete Confirmation Dialog -->
     <v-dialog v-model="deleteDialog" max-width="400">
       <v-card class="rounded-xl text-center pa-6">
@@ -394,21 +424,68 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, nextTick, watch } from 'vue';
 import { useLeadStore } from '~/stores/leads';
 import { useUIStore } from '~/stores/ui';
 import { useAuthStore } from '~/stores/auth';
 import LeadDialog from '~/components/leads/LeadDialog.vue';
+import LeadImportDialog from '~/components/leads/LeadImportDialog.vue';
+import ServiceStaffAvatar from '~/components/services/ServiceStaffAvatar.vue';
+import LeadFollowUpAction from '~/components/leads/LeadFollowUpAction.vue';
+import { sortLeadFollowUps } from '~/utils/leadFollowUpSort';
 import dayjs from 'dayjs';
 
 const leadStore = useLeadStore();
 const uiStore = useUIStore();
 const authStore = useAuthStore();
+const { $api } = useNuxtApp();
+const exporting = ref(false);
+const importVisible = ref(false);
+async function downloadExcel() {
+  exporting.value = true;
+  try {
+    const {data} = await $api.post('/leads/export/excel', {ids:filteredLeads.value.map(lead=>Number(lead.id))}, {responseType:'blob'});
+    const url = URL.createObjectURL(data);
+    const link = document.createElement('a'); link.href=url; link.download=`leads-${dayjs().format('YYYY-MM-DD')}.xlsx`;
+    document.body.appendChild(link); link.click(); link.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+  } catch(error) { uiStore.showError('Unable to download leads. Please try again.'); }
+  finally { exporting.value=false; }
+}
 
 const search = ref('');
 const statusFilter = ref('All');
+const sourceFilter = ref(null);
+const serviceFilter = ref(null);
+const listPage = ref(1);
+const followUpSort = ref('default');
+const tableSort = ref([]);
+const followUpSortOptions = [{ title: 'Default order', value: 'default' }, { title: 'Days remaining: Ascending', value: 'asc' }, { title: 'Days remaining: Descending', value: 'desc' }];
+watch(followUpSort, value => { listPage.value = 1; if (value !== 'default') tableSort.value = []; });
+watch(tableSort, value => { if (value.length) followUpSort.value = 'default'; });
+const statusOptions = [{ title: 'All statuses', value: 'All' }, ...['New', 'Contacted', 'Qualified', 'Follow-up', 'Archived'].map(value => ({ title: value, value }))];
+const sourceOptions = computed(() => [{ title: 'All sources', value: '' }, ...[...new Set(leadStore.leads.map(lead => (lead.source || '').trim()))].sort((a, b) => a.localeCompare(b)).map(source => ({ title: source || 'No source', value: source || '__none__' }))]);
+const serviceColor = service => {
+  const name = (service?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const colors = { goldenvisa: 'amber-darken-3', etraderlicense: 'blue-darken-2', ajmannuventure: 'deep-purple', ecommerce: 'teal-darken-2' };
+  const palette = ['indigo', 'pink-darken-2', 'cyan-darken-3', 'orange-darken-3', 'green-darken-2', 'brown'];
+  const hash = [...name].reduce((value, char) => ((value * 31) + char.charCodeAt(0)) >>> 0, 0);
+  return colors[name] || palette[hash % palette.length];
+};
+const serviceOptions = computed(() => {
+  const services = new Map();
+  for (const lead of leadStore.leads) {
+    const id = lead.service_id == null ? '__none__' : String(lead.service_id);
+    services.set(id, { title: id === '__none__' ? 'No service' : lead.Service?.name || `Service #${id}`, value: id });
+  }
+  return [{ title: 'All services', value: '' }, ...[...services.values()].sort((a, b) => a.title.localeCompare(b.title))];
+});
+const hasFilters = computed(() => !!search.value || statusFilter.value !== 'All' || !!sourceFilter.value || !!serviceFilter.value || followUpSort.value !== 'default' || tableSort.value.length > 0);
+function resetFilters() { search.value = ''; statusFilter.value = 'All'; sourceFilter.value = null; serviceFilter.value = null; followUpSort.value = 'default'; tableSort.value = []; listPage.value = 1; }
+watch([search, statusFilter, sourceFilter, serviceFilter], () => { listPage.value = 1; });
 const viewMode = ref('list');
-const kanbanColumns = ['New', 'Contacted', 'Qualified', 'Won', 'Lost'];
+const kanbanColumns = ['New', 'Contacted', 'Qualified', 'Follow-up', 'Archived'];
+const scheduleAction = ref(null);
+const scheduleLead = ref(null);
 
 const dialogVisible = ref(false);
 const selectedLead = ref(null);
@@ -417,23 +494,49 @@ const deleteDialog = ref(false);
 const leadToDelete = ref(null);
 const deleting = ref(false);
 
-const convertingId = ref(null);
 
+
+function leadCellProps({ item, column }) {
+  if (!['name', 'contact', 'service', 'source', 'assigned_user_id'].includes(column.key) || !authStore.canRecord('leads', 'detail', item)) return {};
+  return {
+    class: 'cursor-pointer',
+    onClick: event => {
+      if (event.target.closest('a, button, input, select, textarea, [role="button"]')) return;
+      navigateTo(`/leads/${item.id}`);
+    }
+  };
+}
 const headers = [
-  { title: 'Lead Details', key: 'name', sortable: true },
-  { title: 'Contact', key: 'contact', sortable: false },
-  { title: 'Service', key: 'service', sortable: true },
-  { title: 'Source', key: 'source', sortable: true },
-  { title: 'Status', key: 'status', sortable: true },
-  { title: 'Added On', key: 'created_at', sortable: true },
-  { title: 'Actions', key: 'actions', sortable: false, align: 'end' }
+  { title: 'LEAD DETAILS', key: 'name', sortable: true },
+  { title: 'CONTACT', key: 'contact', sortable: false },
+  { title: 'SERVICE', key: 'service', sortable: true },
+  { title: 'SOURCE', key: 'source', sortable: true },
+  { title: 'ASSIGNED STAFF', key: 'assigned_user_id', sortable: false, align: 'center', width: 110 },
+  { title: 'STATUS', key: 'status', sortable: true },
+  { title: 'FOLLOW-UP', key: 'follow_up', sortable: false },
+  { title: 'ADDED ON', key: 'created_at', sortable: true, width: 120 },
+  { title: 'ACTIONS', key: 'actions', sortable: false, align: 'end', width: 80 }
 ];
+
+const newAndContactedCount = computed(() =>
+  leadStore.leads.filter(l => l.status === 'New' || l.status === 'Contacted').length
+);
+
+const qualifiedCount = computed(() =>
+  leadStore.leads.filter(l => l.status === 'Qualified').length
+);
+
+const followUpCount = computed(() =>
+  leadStore.leads.filter(l => l.status === 'Follow-up').length
+);
 
 const filteredLeads = computed(() => {
   let list = leadStore.leads;
   if (statusFilter.value !== 'All') {
     list = list.filter(l => l.status === statusFilter.value);
   }
+  if (sourceFilter.value) list = list.filter(lead => ((lead.source || '').trim() || '__none__') === sourceFilter.value);
+  if (serviceFilter.value) list = list.filter(lead => (lead.service_id == null ? '__none__' : String(lead.service_id)) === serviceFilter.value);
   if (search.value) {
     const q = search.value.toLowerCase();
     list = list.filter(l =>
@@ -443,7 +546,7 @@ const filteredLeads = computed(() => {
       (l.phone || '').toLowerCase().includes(q)
     );
   }
-  return list;
+  return sortLeadFollowUps(list, followUpSort.value);
 });
 
 const getStatusColor = (status) => {
@@ -451,8 +554,8 @@ const getStatusColor = (status) => {
     'New': 'info',
     'Contacted': 'warning',
     'Qualified': 'primary',
-    'Lost': 'error',
-    'Won': 'success'
+    'Follow-up': 'primary',
+    'Archived': 'grey'
   };
   return map[status] || 'grey';
 };
@@ -462,9 +565,8 @@ const formatDate = (date) => {
 };
 
 const getLeadsByStatus = (status) => {
-  return filteredLeads.value
-    .filter(l => l.status === status)
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const leads = filteredLeads.value.filter(l => l.status === status);
+  return followUpSort.value === 'default' ? leads.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)) : leads;
 };
 
 const onDragStart = (event, lead) => {
@@ -476,11 +578,14 @@ const onDrop = (event, targetStatus) => {
   const leadId = event.dataTransfer.getData('leadId');
   if (!leadId) return;
   const lead = leadStore.leads.find(l => l.id == leadId);
-  if (!lead || lead.status === targetStatus) return;
-  updateLeadStatus(lead, targetStatus);
+  if (!lead || !authStore.canRecord('leads', 'edit', lead) || lead.status === targetStatus) return;
+  updateLeadStatus(lead, targetStatus, 'Kanban');
 };
 
 const updateLeadStatus = async (lead, newStatus, source = 'List') => {
+  if (newStatus === 'Archived') { openEditDialog({ ...lead, status: 'Archived', archive_reason: '' }); return; }
+  if (lead.status === 'Archived' && newStatus === 'Follow-up') { openEditDialog({ ...lead, status: 'Follow-up' }); return; }
+  if (newStatus === 'Follow-up') { scheduleLead.value = lead; await nextTick(); scheduleAction.value?.openSchedule(); return; }
   try {
     await leadStore.updateLead(lead.id, { status: newStatus, update_source: source });
     uiStore.showSuccess(`Status updated to ${newStatus}`);
@@ -493,6 +598,7 @@ const openCreateDialog = () => {
   selectedLead.value = null;
   dialogVisible.value = true;
 };
+useCreateAction('leads', openCreateDialog);
 
 const openEditDialog = (item) => {
   selectedLead.value = Object.assign({}, item);
@@ -517,19 +623,6 @@ const executeDelete = async () => {
   }
 };
 
-const executeConvert = async (lead) => {
-  convertingId.value = lead.id;
-  try {
-    await leadStore.convertLead(lead.id);
-    uiStore.showSuccess('Lead successfully converted to Customer!');
-    await leadStore.fetchLeads();
-  } catch (error) {
-    uiStore.showError(error.message || 'Failed to convert lead');
-  } finally {
-    convertingId.value = null;
-  }
-};
-
 const onSaved = () => {
   uiStore.showSuccess('Lead saved successfully');
 };
@@ -539,20 +632,110 @@ onMounted(() => {
 });
 </script>
 
-<style scoped>
-.active-toggle {
-  background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%) !important;
+<style>
+/* ===========================================================
+   STRICT CLASSIC THEME — Leads Page
+   Scoped under .v-theme--classic only
+   =========================================================== */
+
+:global(.v-theme--classic) .v-container {
+  background: #F8F9FE !important;
+}
+
+/* ── Stat & Filter Cards ── */
+:global(.v-theme--classic) .soft-card {
+  background: #FFFFFF !important;
+  border: 1px solid rgba(79, 66, 148, 0.12) !important;
+  box-shadow: 0 4px 20px -4px rgba(79, 66, 148, 0.08) !important;
+}
+
+/* ── Primary Buttons ── */
+:global(.v-theme--classic) .v-btn--variant-elevated,
+:global(.v-theme--classic) .v-btn--variant-flat {
+  background: #4F4294 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 14px -4px rgba(79, 66, 148, 0.40) !important;
+}
+:global(.v-theme--classic) .v-btn--variant-elevated:hover,
+:global(.v-theme--classic) .v-btn--variant-flat:hover {
+  background: #6554C0 !important;
+  transform: translateY(-1px) !important;
+}
+
+:global(.v-theme--classic) .v-btn--variant-outlined {
+  border-color: rgba(79, 66, 148, 0.30) !important;
+  color: #4F4294 !important;
+  background: #FFFFFF !important;
+}
+
+/* ── Data Table Header ── */
+:global(.v-theme--classic) .v-data-table .v-data-table-header__content {
+  color: #4F4294 !important;
+  font-weight: 700 !important;
+  font-size: 0.72rem !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+}
+
+/* ── Row Hover ── */
+:global(.v-theme--classic) .v-data-table .v-data-table__tr:hover td {
+  background: rgba(79, 66, 148, 0.04) !important;
+}
+
+/* ── Kanban Column ── */
+:global(.v-theme--classic) .kanban-column {
+  background: rgba(79, 66, 148, 0.03) !important;
+  border: 1px solid rgba(79, 66, 148, 0.08) !important;
+  border-radius: 16px;
+}
+
+/* ── Kanban Card ── */
+:global(.v-theme--classic) .kanban-card {
+  border: 1px solid rgba(79, 66, 148, 0.10) !important;
+}
+:global(.v-theme--classic) .kanban-card:hover {
+  box-shadow: 0 8px 20px -4px rgba(79, 66, 148, 0.18) !important;
+  transform: translateY(-2px);
+}
+
+/* ── Kanban Empty Slot ── */
+:global(.v-theme--classic) .kanban-empty-slot {
+  border: 2px dashed rgba(79, 66, 148, 0.20);
+  border-radius: 12px;
+}
+
+/* ── View Toggle Pill ── */
+:global(.v-theme--classic) .view-toggle-pill {
+  background: #FFFFFF;
+  border: 1px solid rgba(79, 66, 148, 0.20);
+  border-radius: 999px;
+  box-shadow: 0 2px 8px -2px rgba(79, 66, 148, 0.12);
+}
+
+/* ── Active Toggle Button in Classic ── */
+:global(.v-theme--classic) .classic-toggle-active {
+  background: #4F4294 !important;
   color: white !important;
-  box-shadow: 0 4px 15px -3px rgba(99, 102, 241, 0.4) !important;
+  box-shadow: 0 4px 12px -3px rgba(79, 66, 148, 0.45) !important;
 }
 
-.text-gradient {
-  background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, #90caf9 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+/* ── Active Pagination Button ── */
+:global(.v-theme--classic) .v-pagination .v-btn--active {
+  background: #4F4294 !important;
+  color: #FFFFFF !important;
 }
 
+/* ── Focus Outline ── */
+:global(.v-theme--classic) .v-field--focused .v-field__outline {
+  border-color: #4F4294 !important;
+}
+</style>
+
+<style scoped>
+.lead-list-table :deep(th:nth-last-child(2)),
+.lead-list-table :deep(td:nth-last-child(2)),
+.lead-list-table :deep(th:last-child),
+.lead-list-table :deep(td:last-child) { width:1%; white-space:nowrap; padding-inline:8px !important; }
 .kanban-board {
   width: 100%;
 }
@@ -602,4 +785,9 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
+.lead-list-table .lead-status-badge {
+  font-size: calc(0.75rem - 2px) !important;
+}
+
+.lead-header-actions .v-btn { letter-spacing: 0; white-space: nowrap; }
 </style>

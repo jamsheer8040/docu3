@@ -45,13 +45,20 @@ const leadRoutes = require('./routes/lead.routes');
 const emailRoutes = require('./routes/email.routes');
 const toolsRoutes = require('./routes/tools.routes');
 const supplierRoutes = require('./routes/supplier.routes');
+const salaryRoutes = require('./routes/salary.routes');
 
 // Sync Database safely on startup
-(async () => {
+async function initializeDatabase() {
   try {
-    await sequelize.query('SET FOREIGN_KEY_CHECKS = 0;');
+    await sequelize.authenticate();
     await sequelize.sync({ alter: false });
-    await sequelize.query('SET FOREIGN_KEY_CHECKS = 1;');
+    await require('./utils/commissionApprovalSchema')(sequelize);
+    await require('./utils/dashboardTemplateSchema')(sequelize);
+    await require('./utils/leadTypeSchema')(sequelize);
+    await require('./utils/leadFollowUpSchema')(sequelize);
+    await require('./utils/leadArchiveSchema')(sequelize);
+    await require('./utils/businessOwnership').ensureSchema(sequelize);
+    await require('./utils/serviceAssignmentSchema')(sequelize);
     console.log('[System] Synced successfully with all associations.');
     
     // Sync Admin Role (Force all permissions ON at every startup)
@@ -69,7 +76,8 @@ const supplierRoutes = require('./routes/supplier.routes');
       settings: { read: true, write: true, delete: true },
       financials: { read: true, write: true, delete: true },
       management: { read: true, write: true, delete: true },
-      tools: { read: true, write: true, delete: true }
+      tools: { read: true, write: true, delete: true },
+      staff: { read: true, write: true, delete: true }
     };
 
     const [adminRole] = await Role.findOrCreate({
@@ -93,7 +101,8 @@ const supplierRoutes = require('./routes/supplier.routes');
           reports: { read: false, write: false, delete: false },
           settings: { read: false, write: false, delete: false },
           financials: { read: false, write: false, delete: false },
-          management: { read: false, write: false, delete: false }
+          management: { read: false, write: false, delete: false },
+          staff: { read: false, write: false, delete: false }
         },
         tenant_id: 1
       }
@@ -115,33 +124,7 @@ const supplierRoutes = require('./routes/supplier.routes');
     await developerRole.update({ permissions: fullPermissions });
 
     const { User } = require('./models');
-    await User.findOrCreate({
-      where: { email: 'developer@looppe.com' },
-      defaults: {
-        name: 'System Developer',
-        password_hash: 'L00pp3',
-        role_id: developerRole.id,
-        is_active: true,
-        tenant_id: null
-      }
-    });
-
-    const bcrypt = require('bcryptjs');
-    const adminPasswordHash = await bcrypt.hash('admin123', 10);
-    const [adminUser, adminCreated] = await User.findOrCreate({
-      where: { email: 'admin@test.com' },
-      defaults: {
-        name: 'System Administrator',
-        password_hash: adminPasswordHash,
-        role_id: adminRole.id,
-        is_active: true,
-        tenant_id: 1
-      }
-    });
-
-    if (adminCreated) {
-      console.log('[System] Admin User created (admin@test.com / admin123).');
-    }
+    await require('./utils/bootstrap-accounts').retireDefaultAccounts(User);
 
     // Seed Default System Config
     const { SystemConfig } = require('./models');
@@ -251,8 +234,9 @@ const supplierRoutes = require('./routes/supplier.routes');
     console.log('[System] Default email templates initialized.');
   } catch (err) {
     console.error('[System] Startup FAILED:', err);
+    throw err;
   }
-})();
+}
 
 // Rate Limiting
 const globalLimiter = rateLimit({
@@ -276,7 +260,7 @@ app.use(helmet({
 app.use(compression());
 const allowedOrigins = process.env.FRONTEND_URL 
   ? process.env.FRONTEND_URL.split(',').map(o => o.trim()) 
-  : ['http://localhost:3000', 'https://obedient-politics-ger.domcloud.dev'];
+  : ['http://127.0.0.2:3000', 'http://localhost:3000', 'https://obedient-politics-ger.domcloud.dev'];
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -285,6 +269,7 @@ app.use(cors({
     
     // 2. Check allowlist or dev mode
     const isAllowed = allowedOrigins.includes(origin) || 
+                     origin.includes('127.0.0.2') ||
                      process.env.NODE_ENV === 'development' ||
                      origin.includes('domcloud.dev');
     
@@ -302,20 +287,23 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 const path = require('path');
-app.use('/uploads', (req, res, next) => {
+const fileAccess = require('./middleware/file-access.middleware');
+app.use('/uploads', fileAccess, (req, res, next) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
 }, express.static(path.join(__dirname, 'uploads')));
 
 // Also serve under /api/v1/uploads to match frontend apiBase + file_path
-app.use('/api/v1/uploads', (req, res, next) => {
+app.use('/api/v1/uploads', fileAccess, (req, res, next) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
 }, express.static(path.join(__dirname, 'uploads')));
 
 // Health Check
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date() });
+  sequelize.authenticate().then(() => {
+    res.json({ status: 'OK', timestamp: new Date() });
+  }).catch(() => res.status(503).json({ status: 'Unavailable' }));
 });
 
 // Routes
@@ -330,6 +318,7 @@ app.use('/api/v1', globalLimiter);
 app.use('/api/v1/auth', authLimiter, authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/roles', roleRoutes);
+app.use('/api/v1/record-assignments', require('./routes/record-assignments.routes'));
 app.use('/api/v1/wallet', walletRoutes);
 app.use('/api/v1/customers', customerRoutes);
 app.use('/api/v1/suppliers', supplierRoutes);
@@ -346,11 +335,16 @@ app.use('/api/v1/config', configRoutes);
 app.use('/api/v1/saas', saasRoutes);
 app.use('/api/v1/taxes', taxRoutes);
 app.use('/api/v1/sales-orders', salesOrderRoutes);
+app.use('/api/v1/quotations', require('./routes/quotation.routes'));
+app.use('/api/v1/service-bundles', require('./routes/service-bundle.routes'));
 app.use('/api/v1/management', managementRoutes);
+app.use('/api/v1/commissions', require('./routes/commission.routes'));
 app.use('/api/v1/voucher-designs', voucherDesignRoutes);
+app.use('/api/v1/document-templates', require('./routes/document-templates.routes'));
 app.use('/api/v1/leads', leadRoutes);
 app.use('/api/v1/email', emailRoutes);
 app.use('/api/v1/tools', toolsRoutes);
+app.use('/api/v1/salaries', salaryRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -381,8 +375,13 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const HOST = process.env.HOST || '127.0.0.2';
+async function start() {
+ await initializeDatabase();
+ await require('./utils/commissionFeature').initializeActivations();
+ return app.listen(PORT, HOST, () => {
+  console.log(`Server running on http://${HOST}:${PORT}`);
+  if (process.env.DISABLE_CRON === 'true') return;
   // Start background cron jobs
   const { startDocumentReminderCron } = require('./cron/documentReminder.cron');
   startDocumentReminderCron();
@@ -401,5 +400,14 @@ app.listen(PORT, () => {
     await runAllJobs();
   });
 });
+}
+
+if (require.main === module) {
+  start().catch(async () => {
+    await sequelize.close();
+    process.exitCode = 1;
+  });
+}
 
 module.exports = app;
+module.exports.start = start;

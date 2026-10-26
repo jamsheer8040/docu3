@@ -2,7 +2,7 @@
   <div>
     <div class="d-flex justify-space-between align-center mb-4">
       <div class="text-h6 font-weight-bold">Shareholders</div>
-      <v-btn color="primary" prepend-icon="mdi-plus" @click="openDialog(null)">Add Shareholder</v-btn>
+      <v-btn v-if="auth.can('management', 'create')" color="primary" prepend-icon="mdi-plus" @click="openDialog(null)">Add Shareholder</v-btn>
     </div>
 
     <v-card class="border rounded-xl" border>
@@ -17,7 +17,8 @@
           <div class="text-caption text-grey">{{ item.email }}</div>
         </template>
         <template v-slot:item.ownership_percentage="{ item }">
-          <v-chip color="primary" size="small" variant="flat" class="font-weight-bold">{{ item.ownership_percentage }}%</v-chip>
+          <v-chip v-if="item.ownership_percentage != null" color="primary" size="small" variant="flat" class="font-weight-bold">{{ item.ownership_percentage }}%</v-chip>
+          <span v-else>—</span>
         </template>
         <template v-slot:item.required_capital="{ item }">
           {{ formatCurrency(item.required_capital) }}
@@ -37,7 +38,7 @@
           <v-chip :color="item.status === 'Active' ? 'success' : 'grey'" size="small">{{ item.status }}</v-chip>
         </template>
         <template v-slot:item.actions="{ item }">
-          <v-btn icon="mdi-pencil-outline" variant="text" size="small" color="primary" @click="openDialog(item)"></v-btn>
+          <v-btn icon="mdi-pencil-outline" variant="text" size="small" color="primary" v-if="auth.canRecord('management', 'edit_form', item)" @click="openDialog(item)"></v-btn>
         </template>
       </v-data-table>
     </v-card>
@@ -71,7 +72,7 @@
             <v-divider class="my-4"></v-divider>
             <div class="text-subtitle-2 font-weight-bold mb-2">Ownership</div>
             
-            <v-text-field v-model.number="editedItem.ownership_percentage" label="Ownership Percentage (%)*" type="number" variant="outlined" density="comfortable" :rules="[v => v >= 0 || 'Invalid']" class="mb-2" suffix="%"></v-text-field>
+            <v-text-field v-model.number="editedItem.ownership_percentage" label="Ownership Percentage (%)*" type="number" variant="outlined" density="comfortable" :rules="[v => Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 100 || 'Enter 0–100']" class="mb-2" suffix="%"></v-text-field>
             <v-text-field v-if="editedItem.id" v-model="editedItem.ownership_change_reason" label="Reason for Change (if altering %)" variant="outlined" density="comfortable" class="mb-2"></v-text-field>
             
             <v-select v-model="editedItem.status" :items="['Active', 'Inactive']" label="Status" variant="outlined" density="comfortable"></v-select>
@@ -89,6 +90,8 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
+import { useAuthStore } from '~/stores/auth';
+const auth = useAuthStore();
 import { useManagementStore } from '~/stores/management';
 
 const store = useManagementStore();
@@ -109,6 +112,7 @@ const headers = [
 ];
 
 const formatCurrency = (val) => {
+  if (val == null) return '—';
   if (!val) return '0.00';
   return Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
@@ -136,6 +140,6 @@ const save = async () => {
 };
 
 onMounted(() => {
-  store.fetchShareholders();
+  store.fetchShareholders().catch(() => {});
 });
 </script>

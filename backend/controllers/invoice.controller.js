@@ -6,6 +6,8 @@ const WalletTransaction = require('../models/WalletTransaction');
 const sequelize = require('../config/database');
 const { Op } = require('sequelize');
 const { generateInvoicePDF } = require('../utils/pdfGenerator');
+const { loadInvoiceDocumentPolicy } = require('../utils/invoiceDocumentPolicy');
+const { invoiceAgingCutoff } = require('../utils/invoiceAging');
 
 /**
  * Sequential Invoice Number Generator: INV-YYYY-XXXX
@@ -15,13 +17,13 @@ const getNextInvoiceNumber = async (tenant_id) => {
     const prefix = `INV-${year}-`;
     
     // Find the max invoice number for the current year
-    const lastInvoice = await Invoice.findOne({
+    const lastInvoice = await require('../utils/recordAccess').internalRead(() => Invoice.findOne({
         where: {
             tenant_id,
             invoice_number: { [Op.like]: `${prefix}%` }
         },
-        order: [['invoice_number', 'DESC']]
-    });
+        order: [['invoice_number', 'DESC']], attributes: ['invoice_number']
+    }));
 
     let nextNumber = 1;
     if (lastInvoice) {
@@ -37,11 +39,17 @@ const getNextInvoiceNumber = async (tenant_id) => {
  */
 exports.listInvoices = async (req, res) => {
     try {
-        let { status, customer_id, date_from, date_to, search, page = 1, limit = 10 } = req.query;
+        let { status, customer_id, date_from, date_to, search, aging, page = 1, limit = 10 } = req.query;
         limit = Math.min(parseInt(limit), 100);
         const offset = (page - 1) * limit;
 
         const whereClause = { tenant_id: req.user.tenant_id };
+        if (aging !== undefined && aging !== '') {
+            let cutoff;
+            try { cutoff = invoiceAgingCutoff(aging); }
+            catch (error) { return res.status(400).json({ success: false, message: error.message }); }
+            whereClause[Op.and] = [{ created_at: { [Op.lt]: cutoff } }];
+        }
         
         if (status) whereClause.status = status;
         if (customer_id) whereClause.customer_id = customer_id;
@@ -63,8 +71,8 @@ exports.listInvoices = async (req, res) => {
         }
 
         const include = [
-            { model: Customer, attributes: ['id', 'name', 'phone_whatsapp'] },
-            { model: InvoiceItem }
+            { model: Customer, attributes: ['id', 'name', 'phone_whatsapp'], where: { tenant_id: req.user.tenant_id }, required: false },
+            { model: InvoiceItem, separate: true, where: { tenant_id: req.user.tenant_id } }
         ];
 
         // Search logic (by invoice number or customer name)
@@ -78,6 +86,7 @@ exports.listInvoices = async (req, res) => {
         const { count, rows } = await Invoice.findAndCountAll({
             where: whereClause,
             include,
+            distinct: true,
             limit: parseInt(limit),
             offset: parseInt(offset),
             order: [['created_at', 'DESC']]
@@ -94,7 +103,7 @@ exports.listInvoices = async (req, res) => {
         });
     } catch (err) {
         console.error('List Invoices Error:', err);
-        res.status(500).json({ success: false, message: 'Failed to fetch invoices' });
+        res.status(err.status || 500).json({ success: false, message: err.status && err.status < 500 ? err.message : 'Failed to fetch invoices' });
     }
 };
 
@@ -111,10 +120,12 @@ exports.getInvoice = async (req, res) => {
             ]
         });
 
-        if (!invoice) return res.status(404).json({ success: false, message: 'Invoice not found' });
-        res.json({ success: true, data: invoice });
+        if (!invoice) { if (typeof transaction !== 'undefined') await transaction.rollback(); return res.status(404).json({ success: false, message: 'Invoice not found' }); }
+        const data=invoice.toJSON();
+        if(req.user.Role?.type!=='CustomerPortal')data.recorded_net_profit=await require('../utils/invoiceRecordedProfit')(invoice);
+        res.json({ success: true, data });
     } catch (err) {
-        res.status(500).json({ success: false, message: 'Failed to fetch invoice' });
+        res.status(err.status || 500).json({ success: false, message: err.status && err.status < 500 ? err.message : 'Failed to fetch invoice' });
     }
 };
 
@@ -122,8 +133,10 @@ exports.getInvoice = async (req, res) => {
  * Create Manual Invoice
  */
 exports.createInvoice = async (req, res) => {
-    const transaction = await sequelize.transaction();
+    const transaction = await sequelize.transaction({ isolationLevel: 'READ COMMITTED' });
     try {
+        await require('../utils/commissionFeature').lockTenant(req.user.tenant_id,transaction);
+        const costDeductionPoint=await require('../utils/serviceCompletionCost').deductionPoint(req.user.tenant_id,transaction);
         const { customer_id, service_order_ids, items, discount, tax, due_date, notes, status } = req.body;
         // Keep backwards compatibility for service_order_id
         const orderIds = Array.isArray(service_order_ids) ? [...service_order_ids] : (req.body.service_order_id ? [req.body.service_order_id] : []);
@@ -139,6 +152,7 @@ exports.createInvoice = async (req, res) => {
         }
         
         if (!items || items.length === 0) {
+            await transaction.rollback();
             return res.status(400).json({ success: false, message: 'Invoice must have at least one item' });
         }
 
@@ -147,13 +161,13 @@ exports.createInvoice = async (req, res) => {
         // Fetch all related service orders to check cost deductions
         const ServiceOrder = require('../models/ServiceOrder');
         const orders = orderIds.length > 0 
-            ? await ServiceOrder.findAll({ where: { id: { [Op.in]: orderIds }, tenant_id: req.user.tenant_id }, transaction })
+            ? await ServiceOrder.findAll({ where: { id: { [Op.in]: orderIds }, tenant_id: req.user.tenant_id }, transaction, lock:transaction.LOCK.UPDATE })
             : [];
         
         // Map of service_order_id to is_cost_deducted
         const costDeductedMap = {};
         orders.forEach(o => {
-            costDeductedMap[o.id] = o.is_cost_deducted;
+            costDeductedMap[o.id] = o.is_cost_deducted || costDeductionPoint === 'service_completion';
         });
 
         // Calculate Totals
@@ -296,12 +310,13 @@ exports.createInvoice = async (req, res) => {
             }
         }
 
+        await require('../utils/commissionEngine').syncInvoice(invoice, transaction);
         await transaction.commit();
         res.status(201).json({ success: true, data: invoice, message: `Invoice ${invoiceNumber} created` });
     } catch (err) {
         await transaction.rollback();
         console.error('Create Invoice Error:', err);
-        res.status(500).json({ success: false, message: 'Failed to create invoice' });
+        res.status(err.status || 500).json({ success: false, message: err.status && err.status < 500 ? err.message : 'Failed to create invoice' });
     }
 };
 
@@ -309,15 +324,28 @@ exports.createInvoice = async (req, res) => {
  * Update Invoice
  */
 exports.updateInvoice = async (req, res) => {
-    const transaction = await sequelize.transaction();
+    const transaction = await sequelize.transaction({ isolationLevel: 'READ COMMITTED' });
     try {
+        await require('../utils/commissionFeature').lockTenant(req.user.tenant_id,transaction);
+        const costDeductionPoint=await require('../utils/serviceCompletionCost').deductionPoint(req.user.tenant_id,transaction);
         const { customer_id, service_order_ids, service_order_id, items, discount, tax, due_date, notes, status } = req.body;
-        const invoice = await Invoice.findOne({ where: { id: req.params.id, tenant_id: req.user.tenant_id }, transaction });
+        const invoice = await Invoice.findOne({ where: { id: req.params.id, tenant_id: req.user.tenant_id }, transaction, lock: transaction.LOCK.UPDATE });
 
-        if (!invoice) return res.status(404).json({ success: false, message: 'Invoice not found' });
-        if (invoice.status !== 'Draft' && invoice.status !== 'Pending Approval') {
-            return res.status(400).json({ success: false, message: 'Only Draft/Pending invoices can be edited' });
+        if (!invoice) { await transaction.rollback(); return res.status(404).json({ success: false, message: 'Invoice not found' }); }
+        if (Number(invoice.paid_amount) > 0) {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: 'Invoices with payments cannot be edited.' });
         }
+        if (['Issued', 'Overdue'].includes(invoice.status)) {
+            await require('../utils/invoiceEditing').updateUnpaidIssued(invoice, req.body, transaction);
+            await transaction.commit();
+            return res.json({ success: true, data: invoice, message: 'Invoice updated successfully' });
+        }
+        if (invoice.status !== 'Draft' && invoice.status !== 'Pending Approval') {
+            await transaction.rollback();
+            return res.status(400).json({ success: false, message: 'Only draft, pending approval or unpaid issued invoices can be edited.' });
+        }
+        if (status && !['Draft', 'Pending Approval'].includes(status)) throw Object.assign(new Error('Use Issue Invoice to issue a draft after saving its changes.'), { status: 400 });
 
         // Remove existing items
         await InvoiceItem.destroy({ where: { invoice_id: invoice.id }, transaction });
@@ -340,10 +368,10 @@ exports.updateInvoice = async (req, res) => {
             const ServiceOrder = require('../models/ServiceOrder');
             const orders = await ServiceOrder.findAll({
                 where: { id: orderIds, tenant_id: req.user.tenant_id },
-                transaction
+                transaction, lock:transaction.LOCK.UPDATE
             });
             orders.forEach(o => {
-                costDeductedMap[o.id] = o.is_cost_deducted;
+                costDeductedMap[o.id] = o.is_cost_deducted || costDeductionPoint === 'service_completion';
             });
         }
 
@@ -486,12 +514,13 @@ exports.updateInvoice = async (req, res) => {
             }
         }
 
+        await require('../utils/commissionEngine').syncInvoice(invoice, transaction);
         await transaction.commit();
         res.json({ success: true, data: invoice, message: 'Invoice updated successfully' });
     } catch (err) {
         await transaction.rollback();
         console.error('Update Invoice Error:', err);
-        res.status(500).json({ success: false, message: 'Failed to update invoice' });
+        res.status(err.status || 500).json({ success: false, message: err.status && err.status < 500 ? err.message : 'Failed to update invoice' });
     }
 };
 
@@ -499,16 +528,18 @@ exports.updateInvoice = async (req, res) => {
  * Update Status & Wallet Integration
  */
 exports.updateStatus = async (req, res) => {
-    const transaction = await sequelize.transaction();
+    const transaction = await sequelize.transaction({ isolationLevel: 'READ COMMITTED' });
     try {
+        await require('../utils/commissionFeature').lockTenant(req.user.tenant_id,transaction);
+        const costDeductionPoint=await require('../utils/serviceCompletionCost').deductionPoint(req.user.tenant_id,transaction);
         const { status, account_id, amount } = req.body; 
         const invoice = await Invoice.findOne({
             where: { id: req.params.id, tenant_id: req.user.tenant_id },
             include: [{ model: InvoiceItem }],
-            transaction 
+            transaction, lock: transaction.LOCK.UPDATE
         });
 
-        if (!invoice) return res.status(404).json({ success: false, message: 'Invoice not found' });
+        if (!invoice) { await transaction.rollback(); return res.status(404).json({ success: false, message: 'Invoice not found' }); }
         
         // 1. Wallet Deduction & Supplier Billing Logic for Cost Price
         // Happens when an invoice transitions to Issued for the first time
@@ -523,13 +554,13 @@ exports.updateStatus = async (req, res) => {
             const linkedOrders = sOrderIds.length > 0
                 ? await ServiceOrder.findAll({
                     where: { id: sOrderIds, tenant_id: req.user.tenant_id },
-                    transaction
+                    transaction, lock:transaction.LOCK.UPDATE
                   })
                 : [];
             
             const costDeductedMap = {};
             linkedOrders.forEach(o => {
-                costDeductedMap[o.id] = o.is_cost_deducted;
+                costDeductedMap[o.id] = o.is_cost_deducted || costDeductionPoint === 'service_completion';
             });
 
             for (const item of invoice.InvoiceItems) {
@@ -710,12 +741,13 @@ exports.updateStatus = async (req, res) => {
             await invoice.update({ status }, { transaction });
         }
 
+        await require('../utils/commissionEngine').syncInvoice(invoice, transaction);
         await transaction.commit();
         res.json({ success: true, message: `Invoice status updated to ${status}` });
     } catch (err) {
         await transaction.rollback();
         console.error('Update Status Error:', err);
-        res.status(500).json({ success: false, message: 'Failed to update status', error: err.message });
+        res.status(err.status || 500).json({ success: false, message: err.status && err.status < 500 ? err.message : 'Failed to update status', error: err.message });
     }
 };
 
@@ -732,8 +764,12 @@ exports.deleteInvoice = async (req, res) => {
         }
 
         const { sequelize, InvoiceItem } = require('../models');
-        const t = await sequelize.transaction();
+        const t = await sequelize.transaction({ isolationLevel: 'READ COMMITTED' });
         try {
+            await require('../utils/commissionFeature').lockTenant(req.user.tenant_id,t);
+            await invoice.reload({ transaction: t, lock: t.LOCK.UPDATE });
+            if (!['Draft','Pending Approval'].includes(invoice.status)) throw Object.assign(new Error('Only Draft/Pending invoices can be deleted'), { status: 400 });
+            await require('../utils/commissionEngine').syncInvoice(invoice, t, 'Invoice deleted');
             await InvoiceItem.destroy({ where: { invoice_id: invoice.id, tenant_id: req.user.tenant_id }, transaction: t });
             await invoice.destroy({ transaction: t });
             await t.commit();
@@ -743,7 +779,7 @@ exports.deleteInvoice = async (req, res) => {
             throw dbErr;
         }
     } catch (err) {
-        res.status(500).json({ success: false, message: 'Failed to delete invoice' });
+        res.status(err.status || 500).json({ success: false, message: err.status && err.status < 500 ? err.message : 'Failed to delete invoice' });
     }
 };
 
@@ -762,12 +798,13 @@ exports.downloadPDF = async (req, res) => {
 
         if (!invoice) return res.status(404).json({ success: false, message: 'Invoice not found' });
 
+        const policy = await loadInvoiceDocumentPolicy(req.user.tenant_id);
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename=Invoice_${invoice.invoice_number}.pdf`);
+        res.setHeader('Content-Disposition', `attachment; filename=${policy.type === 'tax_invoice' ? 'TaxInvoice' : 'Invoice'}_${invoice.invoice_number}.pdf`);
 
-        await generateInvoicePDF(invoice, res);
+        await generateInvoicePDF(invoice, res, policy);
     } catch (err) {
         console.error('PDF Generation Error:', err);
-        res.status(500).json({ success: false, message: 'Failed to generate PDF' });
+        res.status(err.status || 500).json({ success: false, message: err.status && err.status < 500 ? err.message : 'Failed to generate PDF' });
     }
 };

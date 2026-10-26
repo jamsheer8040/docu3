@@ -6,6 +6,7 @@
         {{ isEdit ? 'Edit Expense' : 'Log New Expense' }}
       </div>
       <v-spacer></v-spacer>
+      <DocumentExport v-if="expense?.id" :record-id="expense.id" :types="['expense']" />
       <v-btn icon="mdi-close" variant="text" @click="$emit('cancel')"></v-btn>
     </v-card-title>
 
@@ -77,7 +78,20 @@
               variant="outlined"
               density="comfortable"
               :rules="[v => !!v || 'Account is required for Paid expenses']"
-            ></v-select>
+            >
+              <template v-slot:item="{ props, item }">
+                <v-list-item v-bind="props" :title="item.raw.name">
+                  <template v-slot:prepend>
+                    <v-avatar size="28" class="mr-3" v-if="item.raw.logo_url" rounded="0">
+                      <v-img :src="item.raw.logo_url"></v-img>
+                    </v-avatar>
+                    <v-avatar size="28" class="mr-3 bg-primary" v-else>
+                      <v-icon size="small" icon="mdi-bank"></v-icon>
+                    </v-avatar>
+                  </template>
+                </v-list-item>
+              </template>
+            </v-select>
           </v-col>
 
           <v-col cols="12" md="6" v-if="state.status === 'Paid'">

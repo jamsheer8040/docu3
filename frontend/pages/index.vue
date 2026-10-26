@@ -1,11 +1,11 @@
 <template>
-  <v-container fluid class="pa-2 pa-md-4">
+  <v-container fluid :class="configStore.themeName === 'sage' ? 'pa-0' : 'standard-dashboard pa-2 pa-md-4'">
     <!-- Registration check -->
     <template v-if="authStore.user?.Tenant?.status === 'new_registration'">
       <v-row class="fill-height align-center justify-center" style="min-height: 70vh;">
         <v-col cols="12" md="8" lg="6" class="text-center">
           <v-card class="glass-card-3d glass-card-3d-purple pa-12" variant="flat">
-            <v-icon icon="mdi-account-clock" size="80" color="info" class="mb-6"></v-icon>
+            <DashboardIcon icon="mdi-account-clock" size="80" color="info" class="mb-6"></DashboardIcon>
             <h1 class="text-h3 font-weight-black text-info mb-4">Account Approval Pending</h1>
             <p class="text-h6 text-secondary font-weight-medium mb-6">
               Your registration has been received successfully. Our team will review and approve your account shortly.
@@ -18,6 +18,10 @@
       </v-row>
     </template>
     
+    <v-progress-linear v-else-if="layoutLoading" indeterminate color="primary" />
+    <v-alert v-else-if="layoutError" type="error" variant="tonal" class="ma-6">{{ layoutError }}<v-btn variant="text" @click="loadDashboard">Retry</v-btn></v-alert>
+    <TemplateDashboard v-else-if="roleLayout?.template" :initial="roleLayout" />
+    <SageDashboard v-else-if="configStore.themeName === 'sage'" />
     <template v-else>
       <v-row>
         <!-- LEFT COLUMN (cols 12, lg 9) -->
@@ -26,9 +30,27 @@
           <div class="d-flex align-center justify-space-between mb-3">
             <h1 class="text-h4 font-weight-black text-blue-grey-darken-4">Home</h1>
             <div class="glass-card-3d rounded-pill px-1 py-1 d-flex shadow-sm">
-              <v-btn variant="text" size="small" class="rounded-pill px-4 text-none font-weight-light text-blue-grey-darken-1">Yearly</v-btn>
-              <v-btn size="small" class="btn-3d rounded-pill px-4 text-none font-weight-light">Monthly</v-btn>
-              <v-btn variant="text" size="small" class="rounded-pill px-4 text-none font-weight-light text-blue-grey-darken-1">Today</v-btn>
+              <v-btn 
+                :variant="selectedPeriod === 'yearly' ? 'flat' : 'text'" 
+                :class="selectedPeriod === 'yearly' ? 'btn-3d' : 'text-blue-grey-darken-1'"
+                size="small" 
+                class="rounded-pill px-4 text-none font-weight-light"
+                @click="changePeriod('yearly')"
+              >Yearly</v-btn>
+              <v-btn 
+                :variant="selectedPeriod === 'monthly' ? 'flat' : 'text'" 
+                :class="selectedPeriod === 'monthly' ? 'btn-3d' : 'text-blue-grey-darken-1'"
+                size="small" 
+                class="rounded-pill px-4 text-none font-weight-light"
+                @click="changePeriod('monthly')"
+              >Monthly</v-btn>
+              <v-btn 
+                :variant="selectedPeriod === 'today' ? 'flat' : 'text'" 
+                :class="selectedPeriod === 'today' ? 'btn-3d' : 'text-blue-grey-darken-1'"
+                size="small" 
+                class="rounded-pill px-4 text-none font-weight-light"
+                @click="changePeriod('today')"
+              >Today</v-btn>
             </div>
           </div>
           
@@ -36,27 +58,27 @@
           <v-row class="mb-3" align="stretch" dense>
             <!-- Total Invoices -->
             <v-col cols="12" md="4">
-              <v-card class="glass-card-3d glass-card-3d-purple pa-4 d-flex flex-column h-100" variant="flat">
-                <div class="text-subtitle-1 font-weight-light text-blue-grey-darken-3 mb-1">Monthly Revenue</div>
+              <v-card class="glass-card-3d glass-card-3d-purple pa-4 d-flex flex-column h-100" variant="flat" :to="authStore.can('reports') && authStore.can('invoices') ? dashboardReportLink('invoice', selectedPeriod) : undefined">
+                <div class="text-subtitle-1 font-weight-light text-blue-grey-darken-3 mb-1">{{ periodLabel }} Revenue</div>
                 <div class="text-h4 font-weight-black text-blue-grey-darken-4 mb-4">
-                  <span class="text-h6 text-blue-grey-lighten-1 mr-1">AED</span>{{ Number(dashboardStore.stats?.monthly_revenue || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}
+                  <span class="text-h6 text-blue-grey-lighten-1 mr-1">AED</span>{{ Number(dashboardStore.stats?.monthly_receivable || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}
                 </div>
                 
                 <div class="mb-4">
                   <div class="d-flex justify-space-between text-caption font-weight-light mb-1">
-                    <span class="text-blue-grey-darken-4">Paid Invoices</span>
+                    <span class="text-blue-grey-darken-4">Invoice Paid</span>
                     <span>AED {{ Number(dashboardStore.stats?.monthly_revenue || 0).toLocaleString() }}</span>
                   </div>
-                  <v-progress-linear :model-value="revenuePaidPct" color="#3B82F6" height="8" rounded></v-progress-linear>
+                  <v-progress-linear :model-value="revenuePaidPct" bg-color="#E7ECE9" :bg-opacity="1" color="#3B82F6" height="8" rounded></v-progress-linear>
                   <div class="text-caption font-weight-light mt-1 text-blue-grey-darken-1">{{ revenuePaidPct }}%</div>
                 </div>
                 
                 <div class="mt-auto">
                   <div class="d-flex justify-space-between text-caption font-weight-light mb-1">
                     <span class="text-blue-grey-darken-4">Total Receivable</span>
-                    <span>AED {{ Number(dashboardStore.stats?.monthly_receivable || 0).toLocaleString() }}</span>
+                    <span>AED {{ Math.max(0, Number(dashboardStore.stats?.monthly_receivable || 0) - Number(dashboardStore.stats?.monthly_revenue || 0)).toLocaleString() }}</span>
                   </div>
-                  <v-progress-linear :model-value="revenuePendingPct" color="#8B5CF6" height="8" rounded></v-progress-linear>
+                  <v-progress-linear :model-value="revenuePendingPct" bg-color="#E7ECE9" :bg-opacity="1" color="#8B5CF6" height="8" rounded></v-progress-linear>
                   <div class="text-caption font-weight-light mt-1 text-blue-grey-darken-1">{{ revenuePendingPct }}%</div>
                 </div>
               </v-card>
@@ -67,44 +89,44 @@
               <v-row dense class="fill-height">
                 <v-col cols="4">
                   <v-card class="glass-card-3d glass-card-3d-blue pa-2 text-center h-100 d-flex flex-column justify-center align-center" variant="flat">
-                    <v-avatar color="rgba(59, 130, 246, 0.15)" size="32" class="mb-2"><v-icon icon="mdi-account-group" color="#3B82F6" size="16"></v-icon></v-avatar>
+                    <v-avatar color="rgba(59, 130, 246, 0.15)" size="32" class="mb-2"><DashboardIcon icon="mdi-account-group" color="#3B82F6" size="16"></DashboardIcon></v-avatar>
                     <div class="text-caption font-weight-light text-blue-grey-darken-2 mb-1" style="line-height: 1.1">Total Clients</div>
                     <div class="text-h5 font-weight-black text-blue-grey-darken-4">{{ dashboardStore.stats?.total_customers || 0 }}</div>
                   </v-card>
                 </v-col>
                 <v-col cols="4">
                   <v-card class="glass-card-3d glass-card-3d-green pa-2 text-center h-100 d-flex flex-column justify-center align-center" variant="flat">
-                    <v-avatar color="rgba(34, 197, 94, 0.15)" size="32" class="mb-2"><v-icon icon="mdi-file-document-outline" color="#22C55E" size="16"></v-icon></v-avatar>
+                    <v-avatar color="rgba(34, 197, 94, 0.15)" size="32" class="mb-2"><DashboardIcon icon="mdi-file-document-outline" color="#22C55E" size="16"></DashboardIcon></v-avatar>
                     <div class="text-caption font-weight-light text-blue-grey-darken-2 mb-1" style="line-height: 1.1">Active Documents</div>
                     <div class="text-h5 font-weight-black text-blue-grey-darken-4">{{ dashboardStore.stats?.active_documents || 0 }}</div>
                   </v-card>
                 </v-col>
                 <v-col cols="4">
                   <v-card class="glass-card-3d glass-card-3d-orange pa-2 text-center h-100 d-flex flex-column justify-center align-center" variant="flat">
-                    <v-avatar color="rgba(249, 115, 22, 0.15)" size="32" class="mb-2"><v-icon icon="mdi-clock-alert-outline" color="#F97316" size="16"></v-icon></v-avatar>
+                    <v-avatar color="rgba(249, 115, 22, 0.15)" size="32" class="mb-2"><DashboardIcon icon="mdi-clock-alert-outline" color="#F97316" size="16"></DashboardIcon></v-avatar>
                     <div class="text-caption font-weight-light text-blue-grey-darken-2 mb-1" style="line-height: 1.1">Expiring Soon (30d)</div>
                     <div class="text-h5 font-weight-black text-blue-grey-darken-4">{{ dashboardStore.stats?.expiring_soon || 0 }}</div>
                   </v-card>
                 </v-col>
                 <v-col cols="4">
                   <v-card class="glass-card-3d glass-card-3d-purple pa-2 text-center h-100 d-flex flex-column justify-center align-center" variant="flat">
-                    <v-avatar color="rgba(139, 92, 246, 0.15)" size="32" class="mb-2"><v-icon icon="mdi-alert-octagon-outline" color="#8B5CF6" size="16"></v-icon></v-avatar>
+                    <v-avatar color="rgba(139, 92, 246, 0.15)" size="32" class="mb-2"><DashboardIcon icon="mdi-alert-octagon-outline" color="#8B5CF6" size="16"></DashboardIcon></v-avatar>
                     <div class="text-caption font-weight-light text-blue-grey-darken-2 mb-1" style="line-height: 1.1">Critical Docs (7d)</div>
                     <div class="text-h5 font-weight-black text-blue-grey-darken-4">{{ dashboardStore.stats?.critical_count || 0 }}</div>
                   </v-card>
                 </v-col>
                 <v-col cols="4">
                   <v-card class="glass-card-3d glass-card-3d-red pa-2 text-center h-100 d-flex flex-column justify-center align-center" variant="flat">
-                    <v-avatar color="rgba(239, 68, 68, 0.15)" size="32" class="mb-2"><v-icon icon="mdi-run" color="#EF4444" size="16"></v-icon></v-avatar>
+                    <v-avatar color="rgba(239, 68, 68, 0.15)" size="32" class="mb-2"><DashboardIcon icon="mdi-run" color="#EF4444" size="16"></DashboardIcon></v-avatar>
                     <div class="text-caption font-weight-light text-blue-grey-darken-2 mb-1" style="line-height: 1.1">Active Service Orders</div>
                     <div class="text-h5 font-weight-black text-blue-grey-darken-4">{{ dashboardStore.stats?.active_service_orders || 0 }}</div>
                   </v-card>
                 </v-col>
                 <v-col cols="4">
-                  <v-card class="glass-card-3d glass-card-3d-grey pa-2 text-center h-100 d-flex flex-column justify-center align-center" variant="flat">
-                    <v-avatar color="rgba(148, 163, 184, 0.15)" size="32" class="mb-2"><v-icon icon="mdi-file-clock-outline" color="#64748B" size="16"></v-icon></v-avatar>
-                    <div class="text-caption font-weight-light text-blue-grey-darken-2 mb-1" style="line-height: 1.1">Invoices (Aged)</div>
-                    <div class="text-h5 font-weight-black text-blue-grey-darken-4">0</div>
+                  <v-card class="glass-card-3d glass-card-3d-grey pa-2 text-center h-100 d-flex flex-column justify-center align-center" variant="flat" :to="authStore.can('reports') ? '/reports?report=invoice&aging=30' : undefined">
+                    <v-avatar color="rgba(148, 163, 184, 0.15)" size="32" class="mb-2"><DashboardIcon icon="mdi-file-clock-outline" color="#64748B" size="16"></DashboardIcon></v-avatar>
+                    <div class="text-caption font-weight-light text-blue-grey-darken-2 mb-1" style="line-height: 1.1">Invoices (30+ days)</div>
+                    <div class="text-h5 font-weight-black text-blue-grey-darken-4">{{ dashboardStore.stats?.aged_invoices || 0 }}</div>
                   </v-card>
                 </v-col>
               </v-row>
@@ -112,7 +134,7 @@
             
             <!-- Service Charge -->
             <v-col cols="12" md="4">
-              <v-card class="glass-card-3d glass-card-3d-green pa-4 d-flex flex-column h-100" variant="flat">
+              <v-card class="glass-card-3d glass-card-3d-green pa-4 d-flex flex-column h-100" variant="flat" :to="authStore.can('reports') ? dashboardReportLink('profit', selectedPeriod) : undefined">
                 <div class="text-subtitle-1 font-weight-light text-blue-grey-darken-3 mb-1">Net Profit</div>
                 <div class="text-h4 font-weight-black text-blue-grey-darken-4 mb-4">
                   <span class="text-h6 text-blue-grey-lighten-1 mr-1">AED</span>{{ Number(dashboardStore.stats?.monthly_profit || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}
@@ -120,19 +142,19 @@
                 
                 <div class="mb-4">
                   <div class="d-flex justify-space-between text-caption font-weight-light mb-1">
-                    <span class="text-blue-grey-darken-4">Service Charge</span>
-                    <span>AED {{ Number(dashboardStore.stats?.monthly_revenue || 0).toLocaleString() }}</span>
+                    <span class="text-blue-grey-darken-4">Service charges created</span>
+                    <span>AED {{ Number(dashboardStore.stats?.monthly_service_charges || 0).toLocaleString() }}</span>
                   </div>
-                  <v-progress-linear :model-value="100" color="#3B82F6" height="8" rounded></v-progress-linear> 
-                  <div class="text-caption font-weight-light mt-1 text-blue-grey-darken-1">100%</div>
+                  <v-progress-linear :model-value="serviceChargePct" bg-color="#E7ECE9" :bg-opacity="1" color="#3B82F6" height="8" rounded></v-progress-linear> 
+                  <div class="text-caption font-weight-light mt-1 text-blue-grey-darken-1">{{ serviceChargePct }}%</div>
                 </div>
                 
                 <div class="mt-auto">
                   <div class="d-flex justify-space-between text-caption font-weight-light mb-1">
-                    <span class="text-blue-grey-darken-4">Expense Total</span>
-                    <span>AED {{ Number(dashboardStore.stats?.monthly_cost || 0).toLocaleString() }}</span>
+                    <span class="text-blue-grey-darken-4">Total expenses</span>
+                    <span>AED {{ Number(dashboardStore.stats?.monthly_expenses || 0).toLocaleString() }}</span>
                   </div>
-                  <v-progress-linear :model-value="Math.min(costPct, 100)" color="#EF4444" height="8" rounded></v-progress-linear>
+                  <v-progress-linear :model-value="Math.min(costPct, 100)" bg-color="#E7ECE9" :bg-opacity="1" color="#EF4444" height="8" rounded></v-progress-linear>
                   <div class="text-caption font-weight-light mt-1 text-blue-grey-darken-1">{{ costPct }}%</div>
                 </div>
               </v-card>
@@ -148,35 +170,35 @@
           <v-row class="mb-3" dense>
             <v-col cols="12" sm="5ths" class="flex-grow-1" style="max-width: 20%; flex-basis: 20%;">
               <v-card class="glass-card-3d glass-card-3d-orange pa-4 text-center" variant="flat">
-                 <v-avatar color="rgba(249, 115, 22, 0.15)" size="36" class="mb-3"><v-icon icon="mdi-clock-outline" color="#F97316" size="20"></v-icon></v-avatar>
+                 <v-avatar color="rgba(249, 115, 22, 0.15)" size="36" class="mb-3"><DashboardIcon icon="mdi-clock-outline" color="#F97316" size="20"></DashboardIcon></v-avatar>
                  <div class="text-caption font-weight-light text-blue-grey-darken-2">Pending</div>
                  <div class="text-h4 font-weight-black text-blue-grey-darken-4">{{ dashboardStore.stats?.service_overview?.Pending || 0 }}</div>
               </v-card>
             </v-col>
             <v-col cols="12" sm="5ths" class="flex-grow-1" style="max-width: 20%; flex-basis: 20%;">
               <v-card class="glass-card-3d glass-card-3d-blue pa-4 text-center" variant="flat">
-                 <v-avatar color="rgba(59, 130, 246, 0.15)" size="36" class="mb-3"><v-icon icon="mdi-progress-clock" color="#3B82F6" size="20"></v-icon></v-avatar>
+                 <v-avatar color="rgba(59, 130, 246, 0.15)" size="36" class="mb-3"><DashboardIcon icon="mdi-progress-clock" color="#3B82F6" size="20"></DashboardIcon></v-avatar>
                  <div class="text-caption font-weight-light text-blue-grey-darken-2">In Progress</div>
                  <div class="text-h4 font-weight-black text-blue-grey-darken-4">{{ dashboardStore.stats?.service_overview?.['In Progress'] || 0 }}</div>
               </v-card>
             </v-col>
             <v-col cols="12" sm="5ths" class="flex-grow-1" style="max-width: 20%; flex-basis: 20%;">
               <v-card class="glass-card-3d glass-card-3d-purple pa-4 text-center" variant="flat">
-                 <v-avatar color="rgba(139, 92, 246, 0.15)" size="36" class="mb-3"><v-icon icon="mdi-file-clock-outline" color="#8B5CF6" size="20"></v-icon></v-avatar>
+                 <v-avatar color="rgba(139, 92, 246, 0.15)" size="36" class="mb-3"><DashboardIcon icon="mdi-file-clock-outline" color="#8B5CF6" size="20"></DashboardIcon></v-avatar>
                  <div class="text-caption font-weight-light text-blue-grey-darken-2">Invoice Pending</div>
                  <div class="text-h4 font-weight-black text-blue-grey-darken-4">{{ dashboardStore.stats?.service_overview?.CompletedInvoicePending || 0 }}</div>
               </v-card>
             </v-col>
             <v-col cols="12" sm="5ths" class="flex-grow-1" style="max-width: 20%; flex-basis: 20%;">
               <v-card class="glass-card-3d glass-card-3d-green pa-4 text-center" variant="flat">
-                 <v-avatar color="rgba(34, 197, 94, 0.15)" size="36" class="mb-3"><v-icon icon="mdi-check-circle-outline" color="#22C55E" size="20"></v-icon></v-avatar>
+                 <v-avatar color="rgba(34, 197, 94, 0.15)" size="36" class="mb-3"><DashboardIcon icon="mdi-check-circle-outline" color="#22C55E" size="20"></DashboardIcon></v-avatar>
                  <div class="text-caption font-weight-light text-blue-grey-darken-2">Invoice Created</div>
                  <div class="text-h4 font-weight-black text-blue-grey-darken-4">{{ dashboardStore.stats?.service_overview?.CompletedInvoiceCreated || 0 }}</div>
               </v-card>
             </v-col>
             <v-col cols="12" sm="5ths" class="flex-grow-1" style="max-width: 20%; flex-basis: 20%;">
               <v-card class="glass-card-3d glass-card-3d-red pa-4 text-center" variant="flat">
-                 <v-avatar color="rgba(239, 68, 68, 0.15)" size="36" class="mb-3"><v-icon icon="mdi-close-circle-outline" color="#EF4444" size="20"></v-icon></v-avatar>
+                 <v-avatar color="rgba(239, 68, 68, 0.15)" size="36" class="mb-3"><DashboardIcon icon="mdi-close-circle-outline" color="#EF4444" size="20"></DashboardIcon></v-avatar>
                  <div class="text-caption font-weight-light text-blue-grey-darken-2">Cancelled</div>
                  <div class="text-h4 font-weight-black text-blue-grey-darken-4">{{ dashboardStore.stats?.service_overview?.Cancelled || 0 }}</div>
               </v-card>
@@ -187,14 +209,11 @@
           <v-row dense>
             <!-- Recent Services -->
             <v-col cols="12" md="6">
-              <div class="d-flex align-center justify-space-between mb-2">
-                <div class="d-flex align-center">
-                  <v-avatar color="rgba(34, 197, 94, 0.15)" size="32" class="mr-2"><v-icon icon="mdi-cog" color="#22C55E" size="18"></v-icon></v-avatar>
+              <v-card class="glass-card-3d glass-card-3d-green pa-4" variant="flat" style="min-height: 250px;">
+                <div class="d-flex align-center mb-3">
+                  <v-avatar color="rgba(34, 197, 94, 0.15)" size="32" class="mr-2"><DashboardIcon icon="mdi-cog" color="#22C55E" size="18"></DashboardIcon></v-avatar>
                   <h2 class="text-h6 font-weight-regular text-blue-grey-darken-4 mb-0">Recent Services</h2>
                 </div>
-                <v-btn variant="outlined" size="small" class="rounded-pill text-none px-3 text-blue-grey-darken-1 font-weight-light glass-card-3d">View all</v-btn>
-              </div>
-              <v-card class="glass-card-3d glass-card-3d-green pa-4" variant="flat" style="min-height: 250px;">
                 <div class="text-subtitle-2 font-weight-light text-blue-grey-darken-2 mb-1">Active Delivery Orders</div>
                 <div class="text-h4 font-weight-black mb-4 text-blue-grey-darken-4">{{ dashboardStore.stats?.active_service_orders || 0 }} <span class="text-subtitle-2 font-weight-light">running</span></div>
                 
@@ -215,14 +234,11 @@
             
             <!-- Wallet Balances -->
             <v-col cols="12" md="6">
-              <div class="d-flex align-center justify-space-between mb-2">
-                <div class="d-flex align-center">
-                  <v-avatar color="rgba(59, 130, 246, 0.15)" size="32" class="mr-2"><v-icon icon="mdi-wallet" color="#3B82F6" size="18"></v-icon></v-avatar>
+              <v-card class="glass-card-3d glass-card-3d-blue pa-4" variant="flat" style="min-height: 250px;">
+                <div class="d-flex align-center mb-3">
+                  <v-avatar color="rgba(59, 130, 246, 0.15)" size="32" class="mr-2"><DashboardIcon icon="mdi-wallet" color="#3B82F6" size="18"></DashboardIcon></v-avatar>
                   <h2 class="text-h6 font-weight-regular text-blue-grey-darken-4 mb-0">Wallet Balances</h2>
                 </div>
-                <v-btn variant="outlined" size="small" class="rounded-pill text-none px-3 text-blue-grey-darken-1 font-weight-light glass-card-3d">View all</v-btn>
-              </div>
-              <v-card class="glass-card-3d glass-card-3d-blue pa-4" variant="flat" style="min-height: 250px;">
                 <div class="text-subtitle-2 font-weight-light text-blue-grey-darken-2 mb-1">Grand Total Liquidity</div>
                 <div class="text-h4 font-weight-black text-blue-grey-darken-4 mb-6">
                   <span class="text-h6 text-blue-grey-lighten-1 mr-1">AED</span>{{ Number(dashboardStore.stats?.wallet_balances?.reduce((sum, w) => sum + parseFloat(w.balance || 0), 0) || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}
@@ -231,7 +247,10 @@
                 <v-list class="bg-transparent pa-0" v-if="dashboardStore.stats?.wallet_balances?.length">
                   <v-list-item v-for="(wallet, index) in dashboardStore.stats.wallet_balances.slice(0,4)" :key="wallet.id" class="px-0 py-2">
                     <template v-slot:prepend>
-                      <v-avatar size="28" class="mr-3 rounded" :class="['bg-blue-grey-darken-4', 'bg-blue', 'bg-orange', 'bg-teal'][index % 4]" style="box-shadow: inset 0 2px 4px rgba(255,255,255,0.4);">
+                      <v-avatar size="28" class="mr-3 rounded" v-if="getBankLogo(wallet.name)">
+                        <v-img :src="getBankLogo(wallet.name)"></v-img>
+                      </v-avatar>
+                      <v-avatar size="28" class="mr-3 rounded" :class="['bg-blue-grey-darken-4', 'bg-blue', 'bg-orange', 'bg-teal'][index % 4]" style="box-shadow: inset 0 2px 4px rgba(255,255,255,0.4);" v-else>
                         <span class="text-caption text-white font-weight-regular">{{ wallet.name.substring(0, 4).toUpperCase() }}</span>
                       </v-avatar>
                     </template>
@@ -253,7 +272,7 @@
           <v-card class="glass-card-3d glass-card-3d-grey pa-4 mb-4" variant="flat">
              <div class="d-flex align-center justify-space-between mb-3">
                 <div class="d-flex align-center">
-                  <v-icon icon="mdi-calendar" color="#8B5CF6" class="mr-2" size="24"></v-icon>
+                  <DashboardIcon icon="mdi-calendar" color="#8B5CF6" class="mr-2" size="24"></DashboardIcon>
                   <span class="text-subtitle-1 font-weight-regular text-blue-grey-darken-4">{{ dayjs().format('MMMM YYYY') }}</span>
                 </div>
              </div>
@@ -333,13 +352,48 @@
 </template>
 
 <script setup>
-import { onMounted, computed } from 'vue';
+import DashboardIcon from '~/components/dashboard/DashboardIcon.vue';
+import { dashboardReportLink } from '~/utils/dashboardReports';
+import SageDashboard from '~/components/dashboard/SageDashboard.vue';
+import TemplateDashboard from '~/components/dashboard/TemplateDashboard.vue';
+import { useConfigStore } from '~/stores/config';
+const configStore = useConfigStore();
+import { onMounted, computed, ref } from 'vue';
 import { useDashboardStore } from '~/stores/dashboard';
 import { useAuthStore } from '~/stores/auth';
+import { getBankLogo } from '~/utils/banks';
 import dayjs from 'dayjs';
 
 const dashboardStore = useDashboardStore();
 const authStore = useAuthStore();
+const { $api } = useNuxtApp();
+const roleLayout=ref(null),layoutLoading=ref(true),layoutError=ref('');
+async function loadDashboard(){
+  layoutLoading.value=true;layoutError.value='';
+  try {
+    if (!authStore.can('dashboard')) { roleLayout.value={template:{name:'Home',description:'Dashboard access is disabled for your role.'},widgets:[]}; return; }
+    roleLayout.value=(await $api.get('/dashboard/layout')).data.data;
+    if(!roleLayout.value.template)await Promise.all([dashboardStore.fetchStats({period:'monthly'}),dashboardStore.fetchRecentActivity()]);
+  }catch(e){layoutError.value=e.response?.data?.message || 'Unable to load dashboard.';}
+  finally{layoutLoading.value=false;}
+}
+
+const selectedPeriod = ref('monthly');
+const periodLabel = computed(() => {
+  if (selectedPeriod.value === 'yearly') return 'Yearly';
+  if (selectedPeriod.value === 'today') return "Today's";
+  return 'Monthly';
+});
+
+const changePeriod = async (period) => {
+  selectedPeriod.value = period;
+  await dashboardStore.fetchStats({ period });
+};
+
+const serviceChargePct = computed(() => {
+  const revenue = dashboardStore.stats?.monthly_service_charges || 0;
+  return revenue > 0 ? 100 : 0;
+});
 
 const revenuePaidPct = computed(() => {
   const paid = dashboardStore.stats?.monthly_revenue || 0;
@@ -355,14 +409,14 @@ const revenuePendingPct = computed(() => {
 });
 
 const costPct = computed(() => {
-  const cost = dashboardStore.stats?.monthly_cost || 0;
-  const revenue = dashboardStore.stats?.monthly_revenue || 0;
+  const cost = dashboardStore.stats?.monthly_expenses || 0;
+  const revenue = dashboardStore.stats?.monthly_service_charges || 0;
   return revenue > 0 ? Math.round((cost / revenue) * 100) : (cost > 0 ? 100 : 0);
 });
 
 const profitPct = computed(() => {
   const profit = dashboardStore.stats?.monthly_profit || 0;
-  const revenue = dashboardStore.stats?.monthly_revenue || 0;
+  const revenue = dashboardStore.stats?.monthly_service_charges || 0;
   return revenue > 0 ? Math.round((profit / revenue) * 100) : 0;
 });
 
@@ -412,15 +466,19 @@ const calendarDays = computed(() => {
   return weeks;
 });
 
-onMounted(async () => {
-    await Promise.all([
-        dashboardStore.fetchStats(),
-        dashboardStore.fetchRecentActivity()
-    ]);
-});
+onMounted(loadDashboard);
 </script>
 
 <style scoped>
+/* Subtract one physical pixel from the existing Vuetify typography tokens. */
+.standard-dashboard :deep(.text-h3) { font-size: calc(3rem - 1px) !important; }
+.standard-dashboard :deep(.text-h4) { font-size: calc(2.125rem - 1px) !important; }
+.standard-dashboard :deep(.text-h5) { font-size: calc(1.5rem - 1px) !important; }
+.standard-dashboard :deep(.text-h6) { font-size: calc(1.25rem - 1px) !important; }
+.standard-dashboard :deep(.text-subtitle-1), .standard-dashboard :deep(.text-body-1) { font-size: calc(1rem - 1px) !important; }
+.standard-dashboard :deep(.text-subtitle-2), .standard-dashboard :deep(.text-body-2) { font-size: calc(.875rem - 1px) !important; }
+.standard-dashboard :deep(.text-caption), .standard-dashboard :deep(.text-overline) { font-size: calc(.75rem - 1px) !important; }
+.standard-dashboard :deep(.v-btn__content:not(:has(> .v-icon))) { font-size: calc(var(--v-btn-size) - 1px); }
 .cal-circle {
   width: 32px;
   height: 32px;
@@ -430,7 +488,7 @@ onMounted(async () => {
   justify-content: center;
   margin: 0 auto;
   font-weight: 500;
-  font-size: 0.85rem;
+  font-size: calc(0.85rem - 1px);
   color: #334155;
   background-color: #F1F5F9;
   border: 2px solid transparent;
@@ -441,7 +499,7 @@ onMounted(async () => {
 
 .calendar-table th, .calendar-table td {
   border-bottom: none !important;
-  font-size: 0.85rem;
+  font-size: calc(0.85rem - 1px);
 }
 .calendar-table td {
   padding: 4px 0 !important;

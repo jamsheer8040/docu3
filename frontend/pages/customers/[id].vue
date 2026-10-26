@@ -306,7 +306,7 @@
     </v-dialog>
     
     <!-- Invoice Preview Dialog -->
-    <v-dialog v-model="viewInvoiceDialog" max-width="900px">
+    <v-dialog v-model="viewInvoiceDialog" max-width="95vw">
         <InvoiceDetailView 
             v-if="viewInvoiceDialog" 
             :invoice-id="selectedInvoiceId" 
@@ -353,7 +353,7 @@
     </v-dialog>
 
     <!-- Add Invoice Dialog -->
-    <v-dialog v-model="addInvoiceDialog" max-width="90vw" persistent>
+    <v-dialog v-model="addInvoiceDialog" fullscreen persistent>
       <InvoiceDialog 
         v-if="addInvoiceDialog"
         :prefilled-customer-id="customer.id"

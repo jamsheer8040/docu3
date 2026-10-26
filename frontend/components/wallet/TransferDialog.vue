@@ -25,8 +25,20 @@
             class="mb-4"
             :rules="[v => !!v || 'Required']"
           >
+            <template v-slot:selection="{ item }">
+              <div class="d-flex align-center">
+                <v-avatar size="20" class="mr-2" v-if="item.raw.logo_url" rounded="0"><v-img :src="item.raw.logo_url"></v-img></v-avatar>
+                <v-avatar size="20" class="mr-2 bg-primary" v-else><v-icon size="x-small" icon="mdi-bank"></v-icon></v-avatar>
+                <span>{{ item.raw.name }}</span>
+              </div>
+            </template>
             <template v-slot:item="{ props, item }">
-              <v-list-item v-bind="props" :subtitle="`Available: AED ${item.raw.balance.toLocaleString()}`"></v-list-item>
+              <v-list-item v-bind="props" :title="item.raw.name" :subtitle="`Available: AED ${item.raw.balance.toLocaleString()}`">
+                <template v-slot:prepend>
+                  <v-avatar size="24" class="mr-3" v-if="item.raw.logo_url" rounded="0"><v-img :src="item.raw.logo_url"></v-img></v-avatar>
+                  <v-avatar size="24" class="mr-3 bg-primary" v-else><v-icon size="x-small" icon="mdi-bank"></v-icon></v-avatar>
+                </template>
+              </v-list-item>
             </template>
           </v-select>
 
@@ -42,7 +54,23 @@
             rounded="lg"
             class="mb-4"
             :rules="[v => !!v || 'Required']"
-          ></v-select>
+          >
+            <template v-slot:selection="{ item }">
+              <div class="d-flex align-center">
+                <v-avatar size="20" class="mr-2" v-if="item.raw.logo_url" rounded="0"><v-img :src="item.raw.logo_url"></v-img></v-avatar>
+                <v-avatar size="20" class="mr-2 bg-primary" v-else><v-icon size="x-small" icon="mdi-bank"></v-icon></v-avatar>
+                <span>{{ item.raw.name }}</span>
+              </div>
+            </template>
+            <template v-slot:item="{ props, item }">
+              <v-list-item v-bind="props" :title="item.raw.name">
+                <template v-slot:prepend>
+                  <v-avatar size="24" class="mr-3" v-if="item.raw.logo_url" rounded="0"><v-img :src="item.raw.logo_url"></v-img></v-avatar>
+                  <v-avatar size="24" class="mr-3 bg-primary" v-else><v-icon size="x-small" icon="mdi-bank"></v-icon></v-avatar>
+                </template>
+              </v-list-item>
+            </template>
+          </v-select>
 
           <div class="text-caption font-weight-bold opacity-60 mb-2 uppercase">Transaction Amount</div>
           <v-text-field

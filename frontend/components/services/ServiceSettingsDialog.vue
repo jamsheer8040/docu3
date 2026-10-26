@@ -3,13 +3,14 @@
     <v-card-title class="pa-6 d-flex align-center">
       <div class="text-h6 font-weight-bold">
         <v-icon icon="mdi-cog" class="mr-2" color="primary"></v-icon>
-        Service Workflow Settings
+        Service Settings
       </div>
       <v-spacer></v-spacer>
       <v-btn icon="mdi-close" variant="text" size="small" @click="$emit('close')"></v-btn>
     </v-card-title>
 
     <v-card-text class="pt-0">
+      <v-alert v-if="loadError" type="error" variant="tonal" class="mb-4">{{ loadError }}<v-btn size="small" variant="text" @click="fetchConfig">Retry</v-btn></v-alert>
       <v-alert type="info" variant="tonal" class="mb-4 text-caption" border="start">
         Configure the number of days before active service orders are automatically escalated to a higher criticality level.
       </v-alert>
@@ -76,6 +77,17 @@
             Run Escalation Now
           </v-btn>
         </div>
+        <v-divider class="my-4" />
+        <div class="d-flex align-center justify-space-between ga-2 mb-2"><h3 class="text-subtitle-2 font-weight-bold">Card Footer Colours</h3><v-btn size="small" variant="text" @click="resetFooterColours">Reset to defaults</v-btn></div>
+        <p class="text-caption text-medium-emphasis mb-2">Footer colours for this workspace.</p>
+        <v-row dense class="mb-4">
+          <v-col v-for="field in serviceFooterFields" :key="field.key" cols="6" sm="4">
+            <div class="footer-colour-field pa-2 h-100 rounded-lg border">
+              <label :for="`service-footer-${field.key}`" class="text-caption font-weight-bold">{{ field.label }}</label>
+              <input :id="`service-footer-${field.key}`" v-model="config.service_footer_colors[field.key]" type="color" :aria-label="`${field.label} footer colour`" :title="config.service_footer_colors[field.key]" />
+            </div>
+          </v-col>
+        </v-row>
       </v-form>
 
       <div v-else class="d-flex justify-center my-6">
@@ -91,6 +103,7 @@
         variant="flat"
         class="px-6"
         :loading="saving"
+        :disabled="loading || !!loadError"
         @click="save"
       >
         Save Settings
@@ -101,21 +114,26 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
+import {serviceFooterDefaults,serviceFooterFields,serviceFooterColors} from '~/utils/serviceAppearance';
 
 const emit = defineEmits(['close', 'success', 'error']);
 
 const config = ref({
   svc_escalation_normal_to_moderate_days: 2,
   svc_escalation_normal_to_critical_days: 4,
-  svc_escalation_moderate_to_critical_days: 2
+  svc_escalation_moderate_to_critical_days: 2,
+  service_footer_colors:{...serviceFooterDefaults}
 });
 
 const loading = ref(false);
 const saving = ref(false);
 const escalating = ref(false);
+const loadError=ref('');
+const resetFooterColours=()=>{config.value.service_footer_colors={...serviceFooterDefaults};};
 
 const fetchConfig = async () => {
   loading.value = true;
+  loadError.value='';
   try {
     const { $api } = useNuxtApp();
     const response = await $api.get('/services/config/criticality');
@@ -123,17 +141,20 @@ const fetchConfig = async () => {
       config.value = {
         svc_escalation_normal_to_moderate_days: response.data.data.svc_escalation_normal_to_moderate_days ?? 2,
         svc_escalation_normal_to_critical_days: response.data.data.svc_escalation_normal_to_critical_days ?? 4,
-        svc_escalation_moderate_to_critical_days: response.data.data.svc_escalation_moderate_to_critical_days ?? 2
+        svc_escalation_moderate_to_critical_days: response.data.data.svc_escalation_moderate_to_critical_days ?? 2,
+        service_footer_colors:serviceFooterColors(response.data.data.service_footer_colors)
       };
     }
   } catch (err) {
     console.error('Failed to fetch criticality config', err);
+    loadError.value='Unable to load service settings. Retry before saving.';
   } finally {
     loading.value = false;
   }
 };
 
 const save = async () => {
+  if(loading.value || loadError.value)return;
   saving.value = true;
   try {
     const { $api } = useNuxtApp();
@@ -172,3 +193,9 @@ onMounted(() => {
   fetchConfig();
 });
 </script>
+<style scoped>
+.footer-colour-field{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:46px}
+.footer-colour-field label{line-height:15px;font-size:11px!important;cursor:pointer}
+.footer-colour-field input[type=color]{flex-shrink:0;width:32px;height:26px;padding:2px;border:1px solid rgba(var(--v-border-color),.3);border-radius:7px;cursor:pointer;background:transparent}
+
+</style>

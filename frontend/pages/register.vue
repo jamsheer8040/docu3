@@ -317,6 +317,12 @@ const handleRegister = async () => {
   background: transparent;
 }
 
+/* The global input style makes placeholders visible even under resting labels.
+   Let the label occupy the empty field until focus moves it above the input. */
+.register-container :deep(.v-field:not(.v-field--active) input::placeholder) {
+  opacity: 0 !important;
+}
+
 .glass-card {
   background: rgba(255, 255, 255, 0.75) !important;
   backdrop-filter: blur(12px);

@@ -2,16 +2,63 @@ const { Supplier, SupplierPurchase, SupplierPayment, WalletAccount, WalletTransa
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 
+exports.downloadStatement = async (req, res, next) => {
+  try {
+    const format = req.params.format;
+    if (!['xlsx', 'pdf'].includes(format)) return res.status(400).json({ success: false, message: 'Choose Excel or PDF' });
+    const tenant_id = req.user.tenant_id;
+    const supplier = await Supplier.findOne({ where: { id: req.params.id, tenant_id } });
+    if (!supplier) return res.status(404).json({ success: false, message: 'Supplier not found' });
+    const where = { supplier_id: supplier.id, tenant_id };
+    const [purchases, payments] = await Promise.all([
+      SupplierPurchase.findAll({ where }),
+      SupplierPayment.findAll({ where, include: [{ model: WalletAccount, attributes: ['name'], required: false, where: { tenant_id } }] })
+    ]);
+    const { supplierStatement, statementPeriod } = await import('../utils/supplierStatement.mjs');
+    const rows = supplierStatement(purchases.map(row => row.toJSON()), payments.map(row => row.toJSON()));
+    let period;
+    try { period = statementPeriod(rows, req.query.from ?? '', req.query.to ?? ''); }
+    catch (error) { return res.status(400).json({ success: false, message: error.message }); }
+    const exporter = require('../utils/supplierStatementExport');
+    const buffer = await exporter[format === 'xlsx' ? 'excel' : 'pdf'](supplier, period.rows, period);
+    res.type(format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf');
+    res.set('Content-Disposition', `attachment; filename="supplier-${supplier.id}-statement.${format}"`);
+    res.set('Cache-Control', 'no-store');
+    res.send(buffer);
+  } catch (error) { next(error); }
+};
+
 // Allowed fields for create/update (prevents mass-assignment)
 const SUPPLIER_ALLOWED_FIELDS = ['name', 'contact_person', 'email', 'phone', 'address', 'notes', 'is_active'];
 
+exports.getPurchases = async (req, res, next) => {
+  try {
+    const purchases = await SupplierPurchase.findAll({
+      where: { tenant_id: req.user.tenant_id },
+      include: [{ model: Supplier, attributes: ['id', 'name'], required: true, where: { tenant_id: req.user.tenant_id } }],
+      order: [['created_at', 'DESC'], ['id', 'DESC']]
+    });
+    res.json({ success: true, data: purchases });
+  } catch (err) { next(err); }
+};
+
 exports.getSuppliers = async (req, res, next) => {
   try {
-    const suppliers = await Supplier.findAll({
-      where: { tenant_id: req.user.tenant_id },
-      order: [['created_at', 'DESC']]
+    const tenant_id = req.user.tenant_id;
+    // Aggregate independently so multiple bills and payments cannot multiply totals.
+    const [suppliers, purchases, payments] = await Promise.all([
+      Supplier.findAll({ where: { tenant_id }, order: [['created_at', 'DESC']] }),
+      SupplierPurchase.findAll({ where: { tenant_id }, attributes: ['supplier_id', [sequelize.fn('SUM', sequelize.col('amount')), 'total']], group: ['supplier_id'], raw: true }),
+      SupplierPayment.findAll({ where: { tenant_id }, attributes: ['supplier_id', [sequelize.fn('SUM', sequelize.col('amount')), 'total']], group: ['supplier_id'], raw: true })
+    ]);
+    const purchaseTotals = new Map(purchases.map(row => [row.supplier_id, Number(row.total || 0)]));
+    const paymentTotals = new Map(payments.map(row => [row.supplier_id, Number(row.total || 0)]));
+    const data = suppliers.map(supplier => {
+      const total_amount = purchaseTotals.get(supplier.id) || 0;
+      const paid = paymentTotals.get(supplier.id) || 0;
+      return { ...supplier.toJSON(), total_amount, paid, balance: Number((total_amount - paid).toFixed(2)) };
     });
-    res.json({ success: true, data: suppliers });
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }
@@ -253,3 +300,4 @@ exports.makePayment = async (req, res, next) => {
     next(err);
   }
 };
+

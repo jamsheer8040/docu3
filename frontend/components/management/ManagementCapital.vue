@@ -2,7 +2,7 @@
   <div>
     <div class="d-flex justify-space-between align-center mb-4">
       <div class="text-h6 font-weight-bold">Capital Transactions</div>
-      <v-btn color="primary" prepend-icon="mdi-plus" @click="openDialog">Record Transaction</v-btn>
+      <v-btn color="primary" prepend-icon="mdi-plus" v-if="auth.can('management', 'create')" @click="openDialog">Record Transaction</v-btn>
     </div>
 
     <v-card class="border rounded-xl" border>
@@ -39,7 +39,7 @@
         <v-card-text class="pa-4">
           <v-form ref="form" v-model="valid">
             <v-select v-model="newItem.shareholder_id" :items="store.shareholders" item-title="name" item-value="id" label="Shareholder*" variant="outlined" density="comfortable" :rules="[v => !!v || 'Required']" class="mb-2"></v-select>
-            <v-select v-model="newItem.type" :items="['Contribution', 'Refund', 'Advance', 'Adjustment']" label="Transaction Type*" variant="outlined" density="comfortable" :rules="[v => !!v || 'Required']" class="mb-2"></v-select>
+            <v-select v-model="newItem.type" :items="['Contribution', 'Refund', 'Advance']" label="Transaction Type*" variant="outlined" density="comfortable" :rules="[v => !!v || 'Required']" class="mb-2"></v-select>
             <v-text-field v-model.number="newItem.amount" label="Amount (AED)*" type="number" variant="outlined" density="comfortable" :rules="[v => v > 0 || 'Invalid']" class="mb-2"></v-text-field>
             
             <v-row>
@@ -51,7 +51,23 @@
               </v-col>
             </v-row>
             
-            <v-select v-model="newItem.wallet_id" :items="walletStore.accounts" item-title="name" item-value="id" label="Deposit To / Withdraw From Wallet" variant="outlined" density="comfortable" class="mb-2" persistent-hint hint="Will automatically update wallet balance"></v-select>
+            <v-select v-model="newItem.wallet_id" :items="walletStore.accounts" item-title="name" item-value="id" label="Deposit To / Withdraw From Wallet" variant="outlined" density="comfortable" class="mb-2" persistent-hint hint="Will automatically update wallet balance">
+              <template v-slot:selection="{ item }">
+                <div class="d-flex align-center">
+                  <v-avatar size="20" class="mr-2" v-if="item.raw.logo_url" rounded="0"><v-img :src="item.raw.logo_url"></v-img></v-avatar>
+                  <v-avatar size="20" class="mr-2 bg-primary" v-else><v-icon size="x-small" icon="mdi-bank"></v-icon></v-avatar>
+                  <span>{{ item.raw.name }}</span>
+                </div>
+              </template>
+              <template v-slot:item="{ props, item }">
+                <v-list-item v-bind="props" :title="item.raw.name">
+                  <template v-slot:prepend>
+                    <v-avatar size="24" class="mr-3" v-if="item.raw.logo_url" rounded="0"><v-img :src="item.raw.logo_url"></v-img></v-avatar>
+                    <v-avatar size="24" class="mr-3 bg-primary" v-else><v-icon size="x-small" icon="mdi-bank"></v-icon></v-avatar>
+                  </template>
+                </v-list-item>
+              </template>
+            </v-select>
             <v-text-field v-model="newItem.reference_number" label="Reference / Cheque Number" variant="outlined" density="comfortable" class="mb-2"></v-text-field>
             <v-textarea v-model="newItem.remarks" label="Remarks" variant="outlined" density="comfortable" rows="2"></v-textarea>
           </v-form>
@@ -68,6 +84,9 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
+import { businessDate } from '~/utils/businessDate';
+import { useAuthStore } from '~/stores/auth';
+const auth = useAuthStore();
 import { useManagementStore } from '~/stores/management';
 import { useWalletStore } from '~/stores/wallet';
 
@@ -77,7 +96,7 @@ const walletStore = useWalletStore();
 const dialog = ref(false);
 const valid = ref(false);
 const saving = ref(false);
-const newItem = ref({ type: 'Contribution', date: new Date().toISOString().substr(0, 10) });
+const newItem = ref({ type: 'Contribution', date: businessDate() });
 
 const headers = [
   { title: 'Date', key: 'date' },
@@ -90,6 +109,7 @@ const headers = [
 ];
 
 const formatCurrency = (val) => {
+  if (val == null) return '—';
   if (!val) return '0.00';
   return Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
@@ -100,7 +120,7 @@ const formatDate = (dateStr) => {
 };
 
 const openDialog = () => {
-  newItem.value = { type: 'Contribution', date: new Date().toISOString().substr(0, 10) };
+  newItem.value = { type: 'Contribution', date: businessDate() };
   dialog.value = true;
 };
 
@@ -118,8 +138,8 @@ const save = async () => {
 };
 
 onMounted(() => {
-  store.fetchCapitalTransactions();
-  if (!store.shareholders.length) store.fetchShareholders();
-  if (!walletStore.accounts.length) walletStore.fetchAccounts();
+  store.fetchCapitalTransactions().catch(() => {});
+  if (!store.shareholders.length) store.fetchShareholders().catch(() => {});
+  if (!walletStore.accounts.length) walletStore.fetchAccounts().catch(() => {});
 });
 </script>

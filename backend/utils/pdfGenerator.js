@@ -3,7 +3,7 @@ const PDFDocument = require('pdfkit');
 /**
  * Generate PDF using pdfkit
  */
-exports.generateInvoicePDF = (invoice, res) => {
+exports.generateInvoicePDF = (invoice, res, policy = { title: 'Invoice' }) => {
     const doc = new PDFDocument({ margin: 50 });
 
     // Stream the PDF to the response
@@ -22,7 +22,8 @@ exports.generateInvoicePDF = (invoice, res) => {
     // --- Invoice Info ---
     doc.fillColor('#000000')
        .fontSize(20)
-       .text('INVOICE', 50, 160);
+       .text(policy.title.toUpperCase(), 50, 160);
+    if (policy.type === 'tax_invoice' && policy.trn) doc.fontSize(10).text(`TRN: ${policy.trn}`, 50, 190);
 
     doc.fontSize(10)
        .text(`Invoice Number: ${invoice.invoice_number}`, 400, 160)
@@ -46,9 +47,10 @@ exports.generateInvoicePDF = (invoice, res) => {
     doc.font('Helvetica-Bold')
        .fontSize(10)
        .text('Description', 50, tableTop)
-       .text('Qty', 300, tableTop)
-       .text('Unit Price', 350, tableTop, { width: 90, align: 'right' })
-       .text('Total', 450, tableTop, { width: 90, align: 'right' });
+       .text('Qty', 270, tableTop)
+       .text('Cost', 310, tableTop, { width: 70, align: 'right' })
+       .text('Service Chg', 390, tableTop, { width: 70, align: 'right' })
+       .text('Total', 470, tableTop, { width: 70, align: 'right' });
 
     doc.moveTo(50, tableTop + 15)
        .lineTo(550, tableTop + 15)
@@ -60,10 +62,11 @@ exports.generateInvoicePDF = (invoice, res) => {
 
     invoice.InvoiceItems.forEach(item => {
         doc.fontSize(10)
-           .text(item.description, 50, position)
-           .text(item.quantity.toString(), 300, position)
-           .text(`${parseFloat(item.unit_price).toFixed(2)}`, 350, position, { width: 90, align: 'right' })
-           .text(`${parseFloat(item.total).toFixed(2)}`, 450, position, { width: 90, align: 'right' });
+           .text(item.description, 50, position, { width: 210 })
+           .text(item.quantity.toString(), 270, position)
+           .text(`${parseFloat(item.cost_price || 0).toFixed(2)}`, 310, position, { width: 70, align: 'right' })
+           .text(`${parseFloat(item.service_charge || 0).toFixed(2)}`, 390, position, { width: 70, align: 'right' })
+           .text(`${parseFloat(item.total || 0).toFixed(2)}`, 470, position, { width: 70, align: 'right' });
 
         position += 20;
     });

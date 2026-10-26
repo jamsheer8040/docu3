@@ -1,12 +1,13 @@
 <template>
   <v-container fluid class="pa-2 pa-sm-4 pa-md-6">
+    <v-btn to="/purchases" variant="text" prepend-icon="mdi-arrow-left" class="mb-3">Back to Purchases</v-btn>
     <div class="d-flex align-center justify-space-between mb-6">
       <div>
         <h1 class="text-h4 font-weight-black text-blue-grey-darken-4">Suppliers</h1>
         <p class="text-blue-grey-darken-1 mt-1">Manage your service providers and vendors</p>
       </div>
       <v-btn
-        v-if="auth.can('suppliers', 'write')"
+        v-if="auth.can('suppliers', 'create')"
         color="primary"
         class="btn-3d rounded-lg font-weight-bold px-6"
         prepend-icon="mdi-plus"
@@ -73,16 +74,20 @@
           </v-chip>
         </template>
 
+        <template #item.total_amount="{ item }"><span class="font-weight-medium text-no-wrap">{{ money(item.total_amount) }}</span></template>
+        <template #item.paid="{ item }"><span class="text-success text-no-wrap">{{ money(item.paid) }}</span></template>
+        <template #item.balance="{ item }"><span class="font-weight-bold text-no-wrap" :class="item.balance > 0 ? 'text-error' : 'text-success'">{{ money(item.balance) }}</span><span v-if="item.balance < 0" class="text-caption text-success ml-1">Credit</span></template>
+
         <template v-slot:item.actions="{ item }">
           <div class="d-flex justify-end gap-1">
             <v-btn icon="mdi-eye-outline" variant="flat" size="x-small" class="ethereal-action-btn" @click="viewSupplier(item.id)"></v-btn>
-            <v-menu v-if="auth.can('suppliers', 'write')" location="bottom end">
+            <v-menu v-if="auth.canRecord('suppliers', 'edit_form', item) || auth.canRecord('suppliers', 'delete', item)" location="bottom end">
                <template v-slot:activator="{ props }">
                  <v-btn v-bind="props" icon="mdi-dots-vertical" variant="flat" size="x-small" class="ethereal-action-btn"></v-btn>
                </template>
                <v-list class="glass-card-ethereal pa-2" density="compact">
-                 <v-list-item @click="openEditDialog(item)" prepend-icon="mdi-pencil" title="Edit Supplier" class="rounded-lg mb-1"></v-list-item>
-                 <v-list-item v-if="item.is_active && auth.can('suppliers', 'delete')" @click="confirmDelete(item)" prepend-icon="mdi-delete" title="Deactivate" base-color="error" class="rounded-lg mb-1"></v-list-item>
+                 <v-list-item v-if="auth.canRecord('suppliers', 'edit_form', item)" @click="openEditDialog(item)" prepend-icon="mdi-pencil" title="Edit Supplier" class="rounded-lg mb-1"></v-list-item>
+                 <v-list-item v-if="item.is_active && auth.canRecord('suppliers', 'delete', item)" @click="confirmDelete(item)" prepend-icon="mdi-delete" title="Deactivate" base-color="error" class="rounded-lg mb-1"></v-list-item>
                </v-list>
             </v-menu>
           </div>
@@ -139,9 +144,13 @@ const headers = [
   { title: 'Supplier Name', key: 'name', align: 'start' },
   { title: 'Contact Person', key: 'contact_person' },
   { title: 'Phone', key: 'phone' },
+  { title: 'Total Amount', key: 'total_amount', align: 'end' },
+  { title: 'Paid', key: 'paid', align: 'end' },
+  { title: 'Balance', key: 'balance', align: 'end' },
   { title: 'Status', key: 'is_active', align: 'center' },
   { title: '', key: 'actions', align: 'end', sortable: false }
 ];
+const money = value => new Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED' }).format(Number(value || 0));
 
 const filteredSuppliers = computed(() => {
   if (!search.value) return suppliers.value;

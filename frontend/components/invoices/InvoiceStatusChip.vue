@@ -4,6 +4,7 @@
     :variant="variant"
     size="small"
     class="font-weight-bold"
+    :data-status="status"
     label
   >
     <v-icon v-if="icon" start :icon="icon" size="x-small"></v-icon>

@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia';
 
+import { getBankLogo } from '~/utils/banks';
+
 export const useWalletStore = defineStore('wallet', {
   state: () => ({
     accounts: [],
@@ -32,7 +34,10 @@ export const useWalletStore = defineStore('wallet', {
         const { $api } = useNuxtApp();
         const response = await $api.get('/wallet/accounts');
         if (response.data.success) {
-          this.accounts = response.data.data;
+          this.accounts = response.data.data.map(account => {
+            account.logo_url = getBankLogo(account.name);
+            return account;
+          });
         }
       } finally {
         this.loading = false;

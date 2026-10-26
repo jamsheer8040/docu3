@@ -23,6 +23,7 @@ const LeadStatusHistory = sequelize.define('LeadStatusHistory', {
     type: DataTypes.INTEGER,
     allowNull: true
   },
+  archive_reason: { type: DataTypes.TEXT, allowNull: true },
   update_source: {
     type: DataTypes.ENUM('Kanban', 'List', 'Details', 'System'),
     allowNull: false,

@@ -1,7 +1,9 @@
 <template>
   <div>
     <!-- Stats Row -->
-    <v-row>
+    <v-progress-linear v-if="loading" indeterminate class="mb-4" />
+    <v-alert v-else-if="error" type="error">{{ error }}<v-btn variant="text" @click="load">Retry</v-btn></v-alert>
+    <v-row v-else-if="stats">
       <v-col cols="12" sm="6" md="3">
         <v-card class="pa-4 border rounded-xl h-100" border variant="flat">
           <div class="text-caption text-grey text-uppercase font-weight-bold mb-1">Proposed Capital</div>
@@ -16,13 +18,13 @@
       </v-col>
       <v-col cols="12" sm="6" md="3">
         <v-card class="pa-4 border rounded-xl h-100" border variant="flat">
-          <div class="text-caption text-grey text-uppercase font-weight-bold mb-1">Outstanding Capital</div>
+          <div class="text-caption text-grey text-uppercase font-weight-bold mb-1">Net Company Shortfall</div>
           <div class="text-h5 font-weight-bold text-orange">{{ formatCurrency(stats?.outstanding_capital) }}</div>
         </v-card>
       </v-col>
       <v-col cols="12" sm="6" md="3">
         <v-card class="pa-4 border rounded-xl h-100" border variant="flat">
-          <div class="text-caption text-grey text-uppercase font-weight-bold mb-1">Excess Capital</div>
+          <div class="text-caption text-grey text-uppercase font-weight-bold mb-1">Net Company Excess</div>
           <div class="text-h5 font-weight-bold text-info">{{ formatCurrency(stats?.excess_capital) }}</div>
         </v-card>
       </v-col>
@@ -60,7 +62,13 @@ const formatCurrency = (val) => {
   return 'AED ' + Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-onMounted(async () => {
-  stats.value = await store.fetchDashboardStats();
-});
+const loading = ref(true);
+const error = ref(null);
+const load = async () => {
+  loading.value = true; error.value = null;
+  try { stats.value = await store.fetchDashboardStats(); }
+  catch (err) { error.value = err.response?.data?.message || 'Management totals could not be loaded.'; }
+  finally { loading.value = false; }
+};
+onMounted(load);
 </script>

@@ -23,7 +23,7 @@
               @click="settingsDialog = true"
             ></v-btn>
             <v-btn
-              v-if="auth.can('documents', 'write')"
+              v-if="auth.can('documents', 'create')"
               color="primary"
               prepend-icon="mdi-plus"
               rounded="lg"
@@ -440,8 +440,8 @@
                 title="View Document"
                 @click.stop="openDocumentPreview(item.file_path)"
               ></v-btn>
-              <v-btn v-if="auth.can('documents', 'write')" icon="mdi-pencil" variant="text" size="small" color="primary" @click.stop="openForm(item)"></v-btn>
-              <v-btn v-if="auth.can('documents', 'delete')" icon="mdi-delete" variant="text" size="small" color="error" @click.stop="confirmDelete(item)"></v-btn>
+              <v-btn v-if="auth.canRecord('documents', 'edit_form', item)" icon="mdi-pencil" variant="text" size="small" color="primary" @click.stop="openForm(item)"></v-btn>
+              <v-btn v-if="auth.canRecord('documents', 'delete', item)" icon="mdi-delete" variant="text" size="small" color="error" @click.stop="confirmDelete(item)"></v-btn>
             </template>
           </v-data-table-server>
         </v-card>
@@ -513,8 +513,8 @@
                 color="info" 
                 @click.stop="openDocumentPreview(item.file_path)"
               ></v-btn>
-              <v-btn v-if="auth.can('documents', 'write')" icon="mdi-pencil" variant="text" size="small" color="primary" @click.stop="openForm(item)"></v-btn>
-              <v-btn v-if="auth.can('documents', 'delete')" icon="mdi-delete" variant="text" size="small" color="error" @click.stop="confirmDelete(item)"></v-btn>
+              <v-btn v-if="auth.canRecord('documents', 'edit_form', item)" icon="mdi-pencil" variant="text" size="small" color="primary" @click.stop="openForm(item)"></v-btn>
+              <v-btn v-if="auth.canRecord('documents', 'delete', item)" icon="mdi-delete" variant="text" size="small" color="error" @click.stop="confirmDelete(item)"></v-btn>
             </div>
           </v-card>
           
@@ -856,6 +856,7 @@ const openForm = (doc = null) => {
   activeDocument.value = doc;
   formDialog.value = true;
 };
+useCreateAction('documents', () => openForm());
 
 const closeForm = () => {
   formDialog.value = false;

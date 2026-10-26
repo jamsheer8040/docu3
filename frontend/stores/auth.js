@@ -1,3 +1,4 @@
+import { canAccess } from '~/utils/recordPermissions';
 import { defineStore } from 'pinia';
 
 export const useAuthStore = defineStore('auth', {
@@ -16,29 +17,8 @@ export const useAuthStore = defineStore('auth', {
   }),
   getters: {
     isAuthenticated: (state) => !!state.token,
-    can: (state) => (module, action = 'read') => {
-      // Admin override
-      if (state.user?.role?.toLowerCase() === 'admin') return true;
-      
-      if (!state.user || !state.user.permissions) return false;
-      
-      let perms = state.user.permissions;
-      
-      // Auto-parse if it's a string (defensive)
-      if (typeof perms === 'string') {
-        try {
-          perms = JSON.parse(perms);
-        } catch (e) {
-          console.error('[AuthStore] Failed to parse permissions:', e);
-          return false;
-        }
-      }
-      
-      if (perms[module] && typeof perms[module] === 'object') {
-        return !!perms[module][action];
-      }
-      return false;
-    },
+    can: (state) => (module, action = 'read') => canAccess(state.user, module, action),
+    canRecord: (state) => (module, action, record) => canAccess(state.user, module, action, record),
     isAdmin: (state) => state.user?.role?.toLowerCase() === 'admin',
     isDeveloper: (state) => state.user?.role === 'Developer',
     userName: (state) => state.user?.name || 'User',

@@ -22,6 +22,7 @@ const Customer = require(path.join(__dirname, 'Customer.js'));
 const UserCustomer = require(path.join(__dirname, 'UserCustomer.js'));
 const Lead = require(path.join(__dirname, 'Lead.js'));
 const LeadStatusHistory = require(path.join(__dirname, 'LeadStatusHistory.js'));
+const LeadFollowUp = require(path.join(__dirname, 'LeadFollowUp.js'));
 console.log('  Loaded: Customer, UserCustomer, Lead, LeadStatusHistory');
 
 // 2.5 Supplier & Purchases
@@ -54,6 +55,7 @@ const ServiceTypePricing = require(path.join(__dirname, 'ServiceTypePricing.js')
 console.log('  Loaded: ServiceTypePricing');
 
 const ServiceOrder = require(path.join(__dirname, 'ServiceOrder.js'));
+const ServiceAssignment = require(path.join(__dirname, 'ServiceAssignment.js'));
 console.log('  Loaded: ServiceOrder');
 
 const SalesOrder = require(path.join(__dirname, 'SalesOrder.js'));
@@ -81,6 +83,7 @@ console.log('  Loaded: Expense');
 
 // 8. System Config
 const SystemConfig = require(path.join(__dirname, 'SystemConfig.js'));
+const DocumentTemplateSnapshot = require(path.join(__dirname, 'DocumentTemplateSnapshot.js'));
 console.log('  Loaded: SystemConfig');
 
 // 9. Email
@@ -105,6 +108,12 @@ console.log('  Loaded: Shareholder, CapitalTransaction, Dividends');
 const VoucherDesign = require(path.join(__dirname, 'VoucherDesign.js'));
 const VoucherDesignAuditLog = require(path.join(__dirname, 'VoucherDesignAuditLog.js'));
 console.log('  Loaded: VoucherDesign, VoucherDesignAuditLog');
+
+// 11. Salary & Payroll
+const SalaryPayroll = require(path.join(__dirname, 'SalaryPayroll.js'));
+const SalaryItem = require(path.join(__dirname, 'SalaryItem.js'));
+const SalaryPayment = require(path.join(__dirname, 'SalaryPayment.js'));
+console.log('  Loaded: SalaryPayroll, SalaryItem, SalaryPayment');
 
 // Define SaaS Associations
 Tenant.belongsTo(Plan, { foreignKey: 'plan_id' });
@@ -134,6 +143,7 @@ Role.belongsTo(Tenant, { foreignKey: 'tenant_id' });
 Tenant.hasMany(Role, { foreignKey: 'tenant_id' });
 
 Customer.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+Customer.belongsTo(User, { foreignKey: 'assigned_user_id', as: 'AssignedSalesStaff', constraints: false });
 Tenant.hasMany(Customer, { foreignKey: 'tenant_id' });
 
 Supplier.belongsTo(Tenant, { foreignKey: 'tenant_id' });
@@ -149,12 +159,15 @@ Lead.belongsTo(Tenant, { foreignKey: 'tenant_id' });
 Tenant.hasMany(Lead, { foreignKey: 'tenant_id' });
 
 Lead.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+Lead.belongsTo(User, { foreignKey: 'assigned_user_id', as: 'AssignedStaff', onDelete: 'SET NULL' });
 User.hasMany(Lead, { foreignKey: 'created_by' });
 
 Lead.belongsTo(Customer, { foreignKey: 'customer_id', as: 'Customer' });
 Customer.hasMany(Lead, { foreignKey: 'customer_id' });
 
 LeadStatusHistory.belongsTo(Lead, { foreignKey: 'lead_id', onDelete: 'CASCADE' });
+LeadFollowUp.belongsTo(Lead, { foreignKey: 'lead_id', onDelete: 'CASCADE' });
+LeadFollowUp.belongsTo(User, { foreignKey: 'created_by', as: 'Recorder' });
 Lead.hasMany(LeadStatusHistory, { foreignKey: 'lead_id', as: 'StatusHistories' });
 
 Lead.belongsTo(ServiceType, { foreignKey: 'service_id', as: 'Service' });
@@ -254,6 +267,9 @@ Document.belongsTo(DocumentType, { foreignKey: 'document_type_id', constraints: 
 DocumentType.hasMany(Document, { foreignKey: 'document_type_id', constraints: false });
 
 ServiceOrder.belongsTo(Customer, { foreignKey: 'customer_id' });
+ServiceOrder.belongsTo(User, { foreignKey: 'assigned_user_id', as: 'AssignedStaff', onDelete: 'SET NULL' });
+ServiceAssignment.belongsTo(ServiceOrder, { foreignKey: 'service_order_id', onDelete: 'CASCADE' });
+ServiceAssignment.belongsTo(Tenant, { foreignKey: 'tenant_id' });
 Customer.hasMany(ServiceOrder, { foreignKey: 'customer_id' });
 
 ServiceOrder.belongsTo(ServiceType, { foreignKey: 'service_type_id' });
@@ -355,9 +371,32 @@ SavedCv.belongsTo(Tenant, { foreignKey: 'tenant_id' });
 SavedCv.belongsTo(User, { foreignKey: 'user_id' });
 
 EmailLog.belongsTo(Tenant, { foreignKey: 'tenant_id' });
-Tenant.hasMany(EmailLog, { foreignKey: 'tenant_id' });
+// Salary & Payroll Associations
+SalaryPayroll.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+Tenant.hasMany(SalaryPayroll, { foreignKey: 'tenant_id' });
+
+SalaryPayroll.hasMany(SalaryItem, { foreignKey: 'payroll_id', as: 'Items', onDelete: 'CASCADE' });
+SalaryItem.belongsTo(SalaryPayroll, { foreignKey: 'payroll_id', as: 'Payroll' });
+
+SalaryItem.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+Tenant.hasMany(SalaryItem, { foreignKey: 'tenant_id' });
+
+SalaryItem.belongsTo(User, { foreignKey: 'user_id', as: 'Staff' });
+User.hasMany(SalaryItem, { foreignKey: 'user_id' });
+
+SalaryItem.belongsTo(WalletAccount, { foreignKey: 'account_id', as: 'Account' });
+WalletAccount.hasMany(SalaryItem, { foreignKey: 'account_id' });
+
+SalaryItem.hasMany(SalaryPayment, { foreignKey: 'salary_item_id', as: 'Payments', onDelete: 'CASCADE' });
+SalaryPayment.belongsTo(SalaryItem, { foreignKey: 'salary_item_id' });
+
+SalaryPayment.belongsTo(WalletAccount, { foreignKey: 'account_id', as: 'Account' });
+WalletAccount.hasMany(SalaryPayment, { foreignKey: 'account_id' });
+
+SalaryPayment.belongsTo(WalletTransaction, { foreignKey: 'transaction_id', as: 'Transaction' });
 
 console.log('[Models] All associations defined.');
+require('../utils/documentTemplateSnapshots')({ SystemConfig, DocumentTemplateSnapshot, Invoice, SalesOrder, Expense, WalletTransaction });
 
 // Add Global Hooks for Automatic Tenant Scoping
 const tenantContext = require('../utils/tenantContext');
@@ -436,7 +475,12 @@ Sequelize.Model.aggregate = async function (field, aggregateFunction, options) {
 };
 
 // Export Database Object
+const Quotation=require('./Quotation');
 const db = {
+  ServiceBundle: require('./ServiceBundle'),
+  ...require('./Commission'),
+  ManagementRequest: require('./ManagementRequest'),
+  Quotation,
   sequelize,
   Sequelize,
   Plan,
@@ -453,6 +497,7 @@ const db = {
   SupplierPayment,
   Lead,
   LeadStatusHistory,
+  LeadFollowUp,
   Document,
   DocumentType,
   StaffDocument,
@@ -462,6 +507,7 @@ const db = {
   ServiceType,
   ServiceTypePricing,
   ServiceOrder,
+  ServiceAssignment,
   SalesOrder,
   SalesOrderItem,
   Invoice,
@@ -470,6 +516,7 @@ const db = {
   ExpenseSubType,
   Expense,
   SystemConfig,
+  DocumentTemplateSnapshot,
   Shareholder,
   OwnershipChange,
   CapitalTransaction,
@@ -480,7 +527,21 @@ const db = {
   VoucherDesignAuditLog,
   EmailTemplate,
   EmailLog,
-  SavedCv
+  SavedCv,
+  SalaryPayroll,
+  SalaryItem,
+  SalaryPayment
 };
 
+require('../utils/businessOwnership').registerOwnership(db);
+require('../utils/recordAccess').install(db);
+for (const hook of ['beforeFindAfterExpandIncludeAll','beforeCount']) db.Expense.addHook(hook, options => require('../utils/commissionFeature').scopeExpenses(options));
+db.DashboardTemplate = require('./DashboardTemplate');
+for (const hook of ['beforeUpdate', 'beforeDestroy']) db.Expense.addHook(hook, async (expense, options) => {
+  if (options.commissionReversal) return;
+  const approval = await db.CommissionEntry.findOne({where:{tenant_id:expense.tenant_id,approval_expense_id:expense.id},transaction:options.transaction});
+  if (approval) { const error=new Error('Manage this approved expense through Commissions.');error.status=409;throw error; }
+  const linked = await db.CommissionPayment.findOne({ where: { tenant_id: expense.tenant_id, expense_id: expense.id }, transaction: options.transaction });
+  if (linked) { const error = new Error('Manage this expense through the Commissions payment history.'); error.status = 409; throw error; }
+});
 module.exports = db;

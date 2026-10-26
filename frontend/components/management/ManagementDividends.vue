@@ -2,7 +2,7 @@
   <div>
     <div class="d-flex justify-space-between align-center mb-4">
       <div class="text-h6 font-weight-bold">Dividends</div>
-      <v-btn color="primary" prepend-icon="mdi-bullhorn" @click="openDeclareDialog">Declare Dividend</v-btn>
+      <v-btn color="primary" prepend-icon="mdi-bullhorn" v-if="auth.can('management', 'create')" @click="openDeclareDialog">Declare Dividend</v-btn>
     </div>
 
     <v-card class="border rounded-xl mb-6" border v-for="dec in store.dividends" :key="dec.id">
@@ -45,8 +45,8 @@
               <td class="text-right text-success">{{ formatCurrency(dist.paid_amount) }}</td>
               <td class="text-right text-error">{{ formatCurrency(dist.allocated_amount - dist.paid_amount) }}</td>
               <td class="text-right">
-                <v-btn v-if="(dist.allocated_amount - dist.paid_amount) > 0" size="small" variant="tonal" color="primary" @click="openPayDialog(dist)">Pay</v-btn>
-                <v-icon v-else color="success" icon="mdi-check-circle"></v-icon>
+                <v-btn v-if="(dist.allocated_amount - dist.paid_amount) > 0 && auth.canRecord('management', 'edit', dec) && ['Declared', 'Partially Paid'].includes(dec.status)" size="small" variant="tonal" color="primary" @click="openPayDialog(dist)">Pay</v-btn>
+                <v-icon v-else-if="Number(dist.allocated_amount) === Number(dist.paid_amount)" color="success" icon="mdi-check-circle"></v-icon>
               </td>
             </tr>
           </tbody>
@@ -64,7 +64,7 @@
           <v-form ref="declareForm" v-model="declareValid">
             <v-text-field v-model="declareItem.financial_year" label="Financial Year*" variant="outlined" density="comfortable" :rules="[v => !!v || 'Required']" class="mb-2"></v-text-field>
             <v-text-field v-model.number="declareItem.total_profit" label="Total Profit (AED)*" type="number" variant="outlined" density="comfortable" :rules="[v => !!v || 'Required']" class="mb-2"></v-text-field>
-            <v-text-field v-model.number="declareItem.dividend_amount" label="Dividend Amount (AED)*" type="number" variant="outlined" density="comfortable" :rules="[v => !!v || 'Required', v => v <= declareItem.total_profit || 'Cannot exceed total profit']" class="mb-2"></v-text-field>
+            <v-text-field v-model.number="declareItem.dividend_amount" label="Dividend Amount (AED)*" type="number" variant="outlined" density="comfortable" :rules="[v => Number.isFinite(Number(v)) && Number(v) > 0 || 'Enter an amount greater than zero', v => v <= declareItem.total_profit || 'Cannot exceed total profit']" class="mb-2"></v-text-field>
             <v-text-field v-model="declareItem.declaration_date" label="Declaration Date*" type="date" variant="outlined" density="comfortable" :rules="[v => !!v || 'Required']" class="mb-2"></v-text-field>
             <v-textarea v-model="declareItem.remarks" label="Remarks" variant="outlined" density="comfortable" rows="2"></v-textarea>
           </v-form>
@@ -91,10 +91,26 @@
             <div class="text-h6 text-error">{{ formatCurrency(payItem.max_amount) }}</div>
           </div>
           <v-form ref="payForm" v-model="payValid">
-            <v-text-field v-model.number="payItem.amount" label="Payment Amount (AED)*" type="number" variant="outlined" density="comfortable" :rules="[v => !!v || 'Required', v => v <= payItem.max_amount || 'Exceeds balance']" class="mb-2"></v-text-field>
+            <v-text-field v-model.number="payItem.amount" label="Payment Amount (AED)*" type="number" variant="outlined" density="comfortable" :rules="[v => Number.isFinite(Number(v)) && Number(v) > 0 || 'Enter an amount greater than zero', v => v <= payItem.max_amount || 'Exceeds balance']" class="mb-2"></v-text-field>
             <v-text-field v-model="payItem.date" label="Payment Date*" type="date" variant="outlined" density="comfortable" :rules="[v => !!v || 'Required']" class="mb-2"></v-text-field>
             <v-select v-model="payItem.method" :items="['Bank Transfer', 'Cash', 'Cheque', 'Other']" label="Payment Method" variant="outlined" density="comfortable" class="mb-2"></v-select>
-            <v-select v-model="payItem.wallet_id" :items="walletStore.accounts" item-title="name" item-value="id" label="Pay From Wallet" variant="outlined" density="comfortable" class="mb-2" persistent-hint hint="Will reduce wallet balance"></v-select>
+            <v-select v-model="payItem.wallet_id" :items="walletStore.accounts" item-title="name" item-value="id" label="Pay From Wallet" variant="outlined" density="comfortable" class="mb-2" persistent-hint hint="Will reduce wallet balance">
+              <template v-slot:selection="{ item }">
+                <div class="d-flex align-center">
+                  <v-avatar size="20" class="mr-2" v-if="item.raw.logo_url" rounded="0"><v-img :src="item.raw.logo_url"></v-img></v-avatar>
+                  <v-avatar size="20" class="mr-2 bg-primary" v-else><v-icon size="x-small" icon="mdi-bank"></v-icon></v-avatar>
+                  <span>{{ item.raw.name }}</span>
+                </div>
+              </template>
+              <template v-slot:item="{ props, item }">
+                <v-list-item v-bind="props" :title="item.raw.name">
+                  <template v-slot:prepend>
+                    <v-avatar size="24" class="mr-3" v-if="item.raw.logo_url" rounded="0"><v-img :src="item.raw.logo_url"></v-img></v-avatar>
+                    <v-avatar size="24" class="mr-3 bg-primary" v-else><v-icon size="x-small" icon="mdi-bank"></v-icon></v-avatar>
+                  </template>
+                </v-list-item>
+              </template>
+            </v-select>
             <v-text-field v-model="payItem.reference_number" label="Reference / Cheque Number" variant="outlined" density="comfortable" class="mb-2"></v-text-field>
           </v-form>
         </v-card-text>
@@ -110,6 +126,9 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
+import { businessDate } from '~/utils/businessDate';
+import { useAuthStore } from '~/stores/auth';
+const auth = useAuthStore();
 import { useManagementStore } from '~/stores/management';
 import { useWalletStore } from '~/stores/wallet';
 
@@ -126,6 +145,7 @@ const payValid = ref(false);
 const payItem = ref({});
 
 const formatCurrency = (val) => {
+  if (val == null) return '—';
   if (!val) return '0.00';
   return Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
@@ -136,7 +156,7 @@ const formatDate = (dateStr) => {
 };
 
 const openDeclareDialog = () => {
-  declareItem.value = { declaration_date: new Date().toISOString().substr(0, 10), financial_year: new Date().getFullYear().toString() };
+  declareItem.value = { declaration_date: businessDate(), financial_year: businessDate().slice(0, 4) };
   declareDialog.value = true;
 };
 
@@ -159,7 +179,7 @@ const openPayDialog = (dist) => {
     shareholderName: dist.Shareholder?.name,
     max_amount: dist.allocated_amount - dist.paid_amount,
     amount: dist.allocated_amount - dist.paid_amount,
-    date: new Date().toISOString().substr(0, 10),
+    date: businessDate(),
     method: 'Bank Transfer'
   };
   payDialog.value = true;
@@ -179,7 +199,7 @@ const savePayment = async () => {
 };
 
 onMounted(() => {
-  store.fetchDividends();
-  if (!walletStore.accounts.length) walletStore.fetchAccounts();
+  store.fetchDividends().catch(() => {});
+  if (!walletStore.accounts.length) walletStore.fetchAccounts().catch(() => {});
 });
 </script>

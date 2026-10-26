@@ -7,6 +7,7 @@ const { verifyToken, requirePermission, optionalVerifyToken } = require('../midd
 // Config routes
 router.get('/', optionalVerifyToken, configController.getConfigs);
 router.put('/', verifyToken, requirePermission('settings', 'write'), configController.updateConfigs);
+router.put('/commission', verifyToken, (req,res,next)=>req.user.Role?.type==='CustomerPortal'?res.status(403).json({success:false,message:'Internal settings access is required.'}):next(), requirePermission('settings', 'write'), configController.setCommissionEnabled);
 router.post('/upload-logo', verifyToken, requirePermission('settings', 'write'), configController.upload.single('logo'), configController.uploadLogo);
 
 // Backup routes

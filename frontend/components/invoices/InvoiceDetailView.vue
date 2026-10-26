@@ -1,13 +1,14 @@
 <template>
   <v-card class="pa-0 rounded-xl overflow-hidden shadow-2xl">
     <!-- Header with Actions -->
-    <v-toolbar color="surface" elevation="0" class="border-b px-4" height="72">
+    <v-toolbar color="surface" elevation="0" class="border-b px-4 invoice-download-toolbar" height="72">
       <div class="ml-4">
         <div class="text-h6 font-weight-bold">Invoice {{ currentInvoice?.invoice_number }}</div>
         <div class="text-caption opacity-60">Status: <InvoiceStatusChip :status="currentInvoice?.status || 'Draft'" /></div>
       </div>
       <v-spacer></v-spacer>
-      <div class="d-flex gap-2">
+      <div class="d-flex gap-2 flex-wrap align-center">
+        <v-btn v-if="currentInvoice && ['Draft', 'Pending Approval', 'Issued', 'Overdue'].includes(currentInvoice.status) && Number(currentInvoice.paid_amount || 0) === 0 && auth.canRecord('invoices', 'edit_form', currentInvoice)" prepend-icon="mdi-pencil-outline" variant="tonal" color="primary" @click="emit('edit', currentInvoice)">Edit invoice</v-btn>
         <v-btn
           color="success"
           variant="tonal"
@@ -16,27 +17,21 @@
         >
           Share
         </v-btn>
-        <v-btn
-          color="primary"
-          variant="flat"
-          prepend-icon="mdi-file-pdf-box"
-          @click="downloadPDF"
-          class="px-6"
-        >
-          Download PDF
-        </v-btn>
+        <template v-if="currentInvoice">
+          <DocumentExport remember size="small" :record-id="currentInvoice.id" :types="[configStore.invoiceDocumentType]" :label="configStore.invoiceDocumentType === 'tax_invoice' ? 'Download Tax Invoice' : 'Download Invoice'" />
+        </template>
         <v-btn icon="mdi-close" variant="text" @click="$emit('close')" class="ml-2"></v-btn>
       </div>
     </v-toolbar>
 
-    <v-card-text class="pa-10 bg-grey-lighten-4" style="max-height: 75vh; overflow-y: auto;">
+    <v-card-text class="pa-4 pa-md-8 bg-grey-lighten-4" style="max-height: 75vh; overflow-y: auto;">
       <!-- Internal View Metrics (Not printed on PDF) -->
       <v-alert
-        v-if="currentInvoice"
+        v-if="currentInvoice && auth.user?.role_type !== 'CustomerPortal'"
         color="info"
         variant="tonal"
         class="mb-6 mx-auto"
-        max-width="800"
+        max-width="1200"
         border="start"
       >
         <template v-slot:title>
@@ -47,22 +42,22 @@
         </template>
         <v-row class="mt-2" dense>
           <v-col cols="4">
-            <div class="text-caption opacity-80">Total Revenue (Selling Price)</div>
-            <div class="font-weight-bold">AED {{ parseFloat(currentInvoice.subtotal || 0).toFixed(2) }}</div>
+            <div class="text-caption opacity-80">Invoice total</div>
+            <div class="font-weight-bold">AED {{ parseFloat(currentInvoice.total || 0).toFixed(2) }}</div>
           </v-col>
           <v-col cols="4">
             <div class="text-caption opacity-80">Total Cost (Government Fees)</div>
             <div class="font-weight-bold text-error">AED {{ parseFloat(currentInvoice.cost_total || 0).toFixed(2) }}</div>
           </v-col>
           <v-col cols="4">
-            <div class="text-caption opacity-80">Net Profit (Service Charge)</div>
-            <div class="font-weight-bold text-success">AED {{ (parseFloat(currentInvoice.subtotal || 0) - parseFloat(currentInvoice.cost_total || 0)).toFixed(2) }}</div>
+            <div class="text-caption opacity-80">{{ !configStore.commissionEnabled ? 'Net Profit' : commissionProfit ? 'Net Profit (after commission)' : 'Margin before commission' }}</div>
+            <div class="font-weight-bold" :class="displayedNetProfit < 0 ? 'text-error' : 'text-success'">AED {{ displayedNetProfit.toFixed(2) }}</div>
           </v-col>
         </v-row>
       </v-alert>
 
       <!-- Invoice Canvas (Mimics A4) -->
-      <v-card class="mx-auto pa-10 shadow-lg invoice-canvas" max-width="800" elevation="1">
+      <v-card class="mx-auto pa-4 pa-md-10 shadow-lg invoice-canvas" max-width="1200" elevation="1">
         <!-- Branding -->
         <v-row class="mb-10 align-top">
           <v-col cols="6">
@@ -77,7 +72,7 @@
             </div>
           </v-col>
           <v-col cols="6" class="text-right">
-            <h1 class="text-h2 font-weight-black opacity-10 mb-4">INVOICE</h1>
+            <h1 class="text-h2 font-weight-black opacity-10 mb-4">{{ configStore.invoiceDocumentType === 'tax_invoice' ? 'TAX INVOICE' : 'INVOICE' }}</h1>
             <div class="text-subtitle-1 font-weight-bold">{{ currentInvoice?.invoice_number }}</div>
             <div class="text-caption">Date: {{ formatDate(currentInvoice?.createdAt) }}</div>
             <div class="text-caption" v-if="currentInvoice?.due_date">Due: {{ formatDate(currentInvoice?.due_date) }}</div>
@@ -104,7 +99,8 @@
             <tr class="bg-primary text-white">
               <th class="text-left font-weight-bold color-on-primary">DESCRIPTION</th>
               <th class="text-center font-weight-bold color-on-primary">QTY</th>
-              <th class="text-right font-weight-bold color-on-primary">PRICE</th>
+              <th class="text-right font-weight-bold color-on-primary">COST</th>
+              <th class="text-right font-weight-bold color-on-primary">SERVICE CHARGE</th>
               <th class="text-right font-weight-bold color-on-primary">TOTAL</th>
             </tr>
           </thead>
@@ -112,15 +108,19 @@
             <tr v-for="item in currentInvoice?.InvoiceItems" :key="item.id">
               <td>{{ item.description }}</td>
               <td class="text-center">{{ item.quantity }}</td>
-              <td class="text-right">{{ parseFloat(item.unit_price).toFixed(2) }}</td>
-              <td class="text-right font-weight-bold">{{ parseFloat(item.total).toFixed(2) }}</td>
+              <td class="text-right">{{ parseFloat(item.cost_price || 0).toFixed(2) }}</td>
+              <td class="text-right">{{ parseFloat(item.service_charge || 0).toFixed(2) }}</td>
+              <td class="text-right font-weight-bold">{{ parseFloat(item.total || 0).toFixed(2) }}</td>
             </tr>
           </tbody>
         </v-table>
 
         <!-- Totals Logic -->
         <v-row justify="end">
-          <v-col cols="5">
+          <v-col v-if="configStore.commissionEnabled && auth.user?.role_type !== 'CustomerPortal' && auth.can('commissions') && currentInvoice && Number(currentInvoice.id) === Number(invoiceId)" cols="12" md="7" class="invoice-commission-area pr-md-8">
+            <InvoiceCommissionPanel :invoice-id="Number(invoiceId)" @saved="commissionProfit = $event" />
+          </v-col>
+          <v-col cols="12" md="5">
             <div class="d-flex justify-space-between mb-2">
               <span class="opacity-60">Subtotal</span>
               <span class="font-weight-medium">AED {{ parseFloat(currentInvoice?.subtotal || 0).toFixed(2) }}</span>
@@ -181,7 +181,9 @@
 import { useUIStore } from '~/stores/ui'
 
 const uiStore = useUIStore()
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useAuthStore } from '~/stores/auth';
+import InvoiceCommissionPanel from '~/components/invoices/InvoiceCommissionPanel.vue';
 import { useInvoiceStore } from '~/stores/invoices';
 import { useConfigStore } from '~/stores/config';
 import InvoiceStatusChip from '~/components/invoices/InvoiceStatusChip.vue';
@@ -191,12 +193,17 @@ const props = defineProps({
   invoiceId: { type: Number, required: true }
 });
 
-const emit = defineEmits(['close']);
+const emit = defineEmits(['close', 'edit']);
 const invoiceStore = useInvoiceStore();
 const configStore = useConfigStore();
 const { openWhatsApp } = useWhatsApp();
 
 const currentInvoice = computed(() => invoiceStore.currentInvoice);
+const auth = useAuthStore(), commissionProfit = ref(null);
+const marginBeforeCommission = computed(() => Number(currentInvoice.value?.total || 0) - Number(currentInvoice.value?.cost_total || 0) - Number(currentInvoice.value?.tax || 0));
+const displayedNetProfit=computed(()=>configStore.commissionEnabled && commissionProfit.value ? commissionProfit.value.net_profit : Number(currentInvoice.value?.recorded_net_profit ?? marginBeforeCommission.value));
+watch(() => props.invoiceId, () => { commissionProfit.value = null; });
+watch(()=>configStore.commissionEnabled,()=>{commissionProfit.value=null;});
 
 onMounted(async () => {
   await invoiceStore.fetchInvoiceById(props.invoiceId);
@@ -225,10 +232,15 @@ const formatDate = (dateString) => {
 </script>
 
 <style scoped>
+.invoice-download-toolbar { height: auto !important; }
+.invoice-download-toolbar :deep(.v-toolbar__content) { height: auto !important; min-height: 72px; padding-top: 12px; padding-bottom: 12px; flex-wrap: wrap; gap: 12px; }
 .invoice-canvas {
     background-color: #fff;
     min-height: 1000px;
     border-radius: 4px;
+}
+@media print {
+    .invoice-commission-area { display: none !important; }
 }
 .custom-invoice-table thead th {
     height: 48px !important;

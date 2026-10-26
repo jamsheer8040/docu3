@@ -43,7 +43,7 @@
 
       <div class="d-flex align-center gap-2">
         <v-btn
-          v-if="supplier && auth.can('suppliers', 'write')"
+          v-if="supplier && auth.canRecord('suppliers', 'edit', supplier)"
           color="white"
           variant="flat"
           class="font-weight-bold px-4 rounded-lg elevation-1"
@@ -54,6 +54,19 @@
         </v-btn>
       </div>
     </div>
+
+    <v-card class="glass-card-ethereal pa-5 rounded-xl mb-6 supplier-contact-summary" variant="flat">
+      <h2><button type="button" class="supplier-contact-toggle text-h6 font-weight-bold" :aria-expanded="contactExpanded" aria-controls="supplier-contact-details" @click="contactExpanded = !contactExpanded"><span>Contact Information</span><v-icon :icon="contactExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="22" /></button></h2>
+      <v-expand-transition><div v-show="contactExpanded" id="supplier-contact-details" class="pt-4">
+      <dl class="supplier-contact-grid">
+        <div><dt>Contact Person</dt><dd>{{ supplier?.contact_person || '—' }}</dd></div>
+        <div><dt>Phone Number</dt><dd><a v-if="supplier?.phone" :href="`tel:${supplier.phone}`" class="text-primary text-decoration-none">{{ supplier.phone }}</a><span v-else>—</span></dd></div>
+        <div><dt>Email Address</dt><dd><a v-if="supplier?.email" :href="`mailto:${supplier.email}`" class="text-primary text-decoration-none">{{ supplier.email }}</a><span v-else>—</span></dd></div>
+        <div><dt>Address</dt><dd>{{ supplier?.address || '—' }}</dd></div>
+      </dl>
+      <div class="supplier-contact-notes mt-4 pt-4"><h3 class="text-caption font-weight-bold text-medium-emphasis mb-1">Notes &amp; Details</h3><p class="text-body-2 mb-0" :class="{ 'text-medium-emphasis font-italic': !supplier?.notes }">{{ supplier?.notes || 'No additional notes recorded for this supplier.' }}</p></div>
+      </div></v-expand-transition>
+    </v-card>
 
     <!-- KPI Summary Stat Cards -->
     <v-row class="mb-6">
@@ -70,7 +83,7 @@
               <div class="text-caption text-grey mt-1">{{ purchases.length }} purchase bills</div>
             </div>
             <v-avatar color="rgba(147, 51, 234, 0.1)" size="48" class="rounded-lg text-primary">
-              <v-icon icon="mdi-receipt-text-outline" size="28"></v-icon>
+              <SupplierSummaryIcon name="billed" />
             </v-avatar>
           </div>
         </v-card>
@@ -89,7 +102,7 @@
               <div class="text-caption text-grey mt-1">{{ payments.length }} payments settled</div>
             </div>
             <v-avatar color="rgba(34, 197, 94, 0.1)" size="48" class="rounded-lg text-success">
-              <v-icon icon="mdi-check-circle-outline" size="28"></v-icon>
+              <SupplierSummaryIcon name="paid" />
             </v-avatar>
           </div>
         </v-card>
@@ -110,7 +123,7 @@
               </div>
             </div>
             <v-avatar color="rgba(239, 68, 68, 0.1)" size="48" class="rounded-lg text-error">
-              <v-icon icon="mdi-clock-alert-outline" size="28"></v-icon>
+              <SupplierSummaryIcon name="balance" />
             </v-avatar>
           </div>
         </v-card>
@@ -129,7 +142,7 @@
               <div class="text-caption text-grey mt-1">of all liabilities cleared</div>
             </div>
             <v-avatar color="rgba(59, 130, 246, 0.1)" size="48" class="rounded-lg text-info">
-              <v-icon icon="mdi-finance" size="28"></v-icon>
+              <SupplierSummaryIcon name="settlement" />
             </v-avatar>
           </div>
         </v-card>
@@ -138,92 +151,8 @@
 
     <!-- Main Detail Content -->
     <v-row>
-      <!-- Supplier Profile & Contact Info -->
-      <v-col cols="12" md="3">
-        <v-card class="glass-card-ethereal pa-6 rounded-2xl h-100" variant="flat">
-          <h3 class="text-h6 font-weight-black text-blue-grey-darken-4 mb-4 d-flex align-center gap-2">
-            <v-icon color="primary" size="22">mdi-office-building-outline</v-icon>
-            Contact Information
-          </h3>
-
-          <v-list class="bg-transparent pa-0">
-            <v-list-item class="px-0 py-2">
-              <template v-slot:prepend>
-                <v-avatar color="rgba(147, 51, 234, 0.08)" size="36" class="mr-3 text-primary">
-                  <v-icon size="18">mdi-account-circle-outline</v-icon>
-                </v-avatar>
-              </template>
-              <v-list-item-title class="text-caption text-grey-darken-1 font-weight-bold">Contact Person</v-list-item-title>
-              <v-list-item-subtitle class="font-weight-bold text-blue-grey-darken-4 text-body-2">
-                {{ supplier?.contact_person || '—' }}
-              </v-list-item-subtitle>
-            </v-list-item>
-
-            <v-divider style="opacity: 0.1"></v-divider>
-
-            <v-list-item class="px-0 py-2">
-              <template v-slot:prepend>
-                <v-avatar color="rgba(34, 197, 94, 0.08)" size="36" class="mr-3 text-success">
-                  <v-icon size="18">mdi-phone-outline</v-icon>
-                </v-avatar>
-              </template>
-              <v-list-item-title class="text-caption text-grey-darken-1 font-weight-bold">Phone Number</v-list-item-title>
-              <v-list-item-subtitle class="font-weight-bold text-blue-grey-darken-4 text-body-2">
-                <a v-if="supplier?.phone" :href="`tel:${supplier.phone}`" class="text-decoration-none text-primary">
-                  {{ supplier.phone }}
-                </a>
-                <span v-else>—</span>
-              </v-list-item-subtitle>
-            </v-list-item>
-
-            <v-divider style="opacity: 0.1"></v-divider>
-
-            <v-list-item class="px-0 py-2">
-              <template v-slot:prepend>
-                <v-avatar color="rgba(59, 130, 246, 0.08)" size="36" class="mr-3 text-info">
-                  <v-icon size="18">mdi-email-outline</v-icon>
-                </v-avatar>
-              </template>
-              <v-list-item-title class="text-caption text-grey-darken-1 font-weight-bold">Email Address</v-list-item-title>
-              <v-list-item-subtitle class="font-weight-bold text-blue-grey-darken-4 text-body-2">
-                <a v-if="supplier?.email" :href="`mailto:${supplier.email}`" class="text-decoration-none text-primary">
-                  {{ supplier.email }}
-                </a>
-                <span v-else>—</span>
-              </v-list-item-subtitle>
-            </v-list-item>
-
-            <v-divider style="opacity: 0.1"></v-divider>
-
-            <v-list-item class="px-0 py-2">
-              <template v-slot:prepend>
-                <v-avatar color="rgba(245, 158, 11, 0.08)" size="36" class="mr-3 text-warning">
-                  <v-icon size="18">mdi-map-marker-outline</v-icon>
-                </v-avatar>
-              </template>
-              <v-list-item-title class="text-caption text-grey-darken-1 font-weight-bold">Address</v-list-item-title>
-              <v-list-item-subtitle class="font-weight-bold text-blue-grey-darken-4 text-body-2" style="white-space: pre-wrap;">
-                {{ supplier?.address || '—' }}
-              </v-list-item-subtitle>
-            </v-list-item>
-          </v-list>
-
-          <v-divider class="my-4" style="opacity: 0.1"></v-divider>
-
-          <div>
-            <div class="text-caption font-weight-bold text-grey-darken-1 mb-1">Notes & Details</div>
-            <p v-if="supplier?.notes" class="text-body-2 font-weight-medium pa-3 rounded-lg bg-grey-lighten-4 text-blue-grey-darken-3 mb-0" style="white-space: pre-wrap;">
-              {{ supplier.notes }}
-            </p>
-            <p v-else class="text-caption text-grey font-italic mb-0">
-              No additional notes recorded for this supplier.
-            </p>
-          </div>
-        </v-card>
-      </v-col>
-
       <!-- Accounting Tabs: Purchases & Payments -->
-      <v-col cols="12" md="9">
+      <v-col cols="12">
         <v-card class="glass-card-ethereal overflow-hidden rounded-2xl h-100" variant="flat">
           <div class="px-4 pt-3 pb-0" style="background: rgba(255,255,255,0.2); border-bottom: 1px solid rgba(0,0,0,0.06)">
             <v-tabs v-model="tab" color="primary" class="bg-transparent">
@@ -233,6 +162,9 @@
                 <v-chip size="x-small" color="primary" variant="flat" class="ml-2 font-weight-bold">
                   {{ purchases.length }}
                 </v-chip>
+              </v-tab>
+              <v-tab value="statement" class="font-weight-bold text-none px-6">
+                <v-icon start icon="mdi-book-open-page-variant-outline" />Statement
               </v-tab>
               <v-tab value="payments" class="font-weight-bold text-none px-6">
                 <v-icon start icon="mdi-cash-multiple"></v-icon>
@@ -323,6 +255,37 @@
               </v-data-table>
             </v-window-item>
 
+            <v-window-item value="statement">
+              <div class="pa-4">
+                <h2 class="text-h6 font-weight-bold mb-4">Supplier Statement</h2>
+                <div class="statement-toolbar mb-3">
+                  <v-text-field v-model="statementFrom" class="statement-date-picker" label="Start date" type="date" variant="outlined" density="compact" hide-details clearable :max="statementTo || undefined" />
+                  <v-text-field v-model="statementTo" class="statement-date-picker" label="End date" type="date" variant="outlined" density="compact" hide-details clearable :min="statementFrom || undefined" />
+                  <v-btn variant="text" rounded="pill" :disabled="!statementFrom && !statementTo" @click="statementFrom = ''; statementTo = ''">Clear dates</v-btn>
+                  <v-btn color="primary" variant="tonal" rounded="pill" prepend-icon="mdi-file-excel-outline" :loading="exporting === 'xlsx'" :disabled="!!exporting || !supplier || !!statementDateError" @click="downloadStatement('xlsx')">Download Excel</v-btn>
+                  <v-btn color="primary" variant="tonal" rounded="pill" prepend-icon="mdi-file-pdf-box" :loading="exporting === 'pdf'" :disabled="!!exporting || !supplier || !!statementDateError" @click="downloadStatement('pdf')">Download PDF</v-btn>
+                  <v-btn variant="text" prepend-icon="mdi-refresh" :loading="loadingPurchases || loadingPayments" @click="reloadStatement">Refresh statement</v-btn>
+                </div>
+                <v-alert v-if="statementError" type="error" variant="tonal" class="mt-4">Unable to load the complete statement. Please refresh to try again.</v-alert>
+                <v-alert v-else-if="statementDateError" type="warning" variant="tonal" class="mt-4">{{ statementDateError }}</v-alert>
+                <div v-else-if="!loadingPurchases && !loadingPayments" class="d-flex flex-wrap ga-6 mt-4">
+                  <div><span class="text-caption text-medium-emphasis">Opening Balance</span><p class="font-weight-bold">{{ formatCurrency(statementRange.opening) }}</p></div>
+                  <div><span class="text-caption text-medium-emphasis">Period Debit (Paid)</span><p class="font-weight-bold text-success">{{ formatCurrency(statementRange.debit) }}</p></div>
+                  <div><span class="text-caption text-medium-emphasis">Period Credit (Purchases)</span><p class="font-weight-bold">{{ formatCurrency(statementRange.credit) }}</p></div>
+                  <div><span class="text-caption text-medium-emphasis">Closing Balance{{ statementTo ? ` as of ${statementTo}` : '' }}</span><p class="font-weight-bold" :class="statementRange.closing > 0 ? 'text-error' : 'text-success'">{{ formatCurrency(statementRange.closing) }} <span v-if="statementRange.closing < 0" class="text-caption">Advance / credit</span></p></div>
+                </div>
+              </div>
+              <v-data-table v-if="!statementError && !statementDateError" v-model:page="statementPage" :headers="statementHeaders" :items="loadingPurchases || loadingPayments ? [] : statementRows" item-value="key" :loading="loadingPurchases || loadingPayments" :items-per-page="15" class="bg-transparent ethereal-table" hover>
+                <template #body.prepend><tr v-if="statementFrom && statementPage === 1 && !loadingPurchases && !loadingPayments"><td colspan="5" class="font-weight-bold">Opening balance (brought forward)</td><td class="text-end font-weight-bold text-no-wrap">{{ formatCurrency(statementRange.opening) }}</td></tr></template>
+                <template #item.date="{ item }">{{ formatDate(item.date) }}</template>
+                <template #item.description="{ item }"><div class="py-3" style="min-width:200px; max-width:420px; white-space:normal; overflow-wrap:anywhere;"><strong>{{ item.description }}</strong><small class="d-block text-medium-emphasis">{{ item.kind }} · {{ item.detail }}</small></div></template>
+                <template #item.debit="{ item }"><span class="text-success text-no-wrap">{{ item.kind === 'Payment' ? formatCurrency(item.debit) : '—' }}</span></template>
+                <template #item.credit="{ item }"><span class="text-no-wrap">{{ item.kind === 'Purchase' ? formatCurrency(item.credit) : '—' }}</span></template>
+                <template #item.balance="{ item }"><strong class="text-no-wrap" :class="item.balance > 0 ? 'text-error' : 'text-success'">{{ formatCurrency(item.balance) }}</strong><small v-if="item.balance < 0" class="d-block text-success">Advance / credit</small></template>
+                <template #no-data><div class="pa-8 text-medium-emphasis">No purchases or payments in the selected period.</div></template>
+              </v-data-table>
+            </v-window-item>
+
             <!-- PAYMENTS TAB -->
             <v-window-item value="payments">
               <v-data-table
@@ -395,6 +358,7 @@
 </template>
 
 <script setup>
+const contactExpanded = ref(false);
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useNuxtApp } from '#app';
@@ -402,6 +366,8 @@ import { useAuthStore } from '@/stores/auth';
 import { useCurrency } from '@/composables/useCurrency';
 import SupplierPaymentDialog from '@/components/suppliers/SupplierPaymentDialog.vue';
 import SupplierForm from '@/components/suppliers/SupplierForm.vue';
+import SupplierSummaryIcon from '@/components/suppliers/SupplierSummaryIcon.vue';
+import { supplierStatement, statementPeriod } from '~/utils/supplierStatement.mjs';
 
 const route = useRoute();
 const router = useRouter();
@@ -419,6 +385,42 @@ const payments = ref([]);
 
 const loadingPurchases = ref(false);
 const loadingPayments = ref(false);
+const statementErrors = reactive({ purchases: false, payments: false });
+const statementError = computed(() => statementErrors.purchases || statementErrors.payments);
+const allStatementRows = computed(() => supplierStatement(purchases.value, payments.value));
+const statementFrom = ref('');
+const statementTo = ref('');
+const statementPage = ref(1);
+const statementResult = computed(() => {
+  try { return { period: statementPeriod(allStatementRows.value, statementFrom.value || '', statementTo.value || ''), error: '' }; }
+  catch (error) { return { period: { rows: [], opening: 0, closing: 0, debit: 0, credit: 0 }, error: error.message }; }
+});
+const statementRange = computed(() => statementResult.value.period);
+const statementDateError = computed(() => statementResult.value.error);
+const statementRows = computed(() => statementRange.value.rows);
+watch([statementFrom, statementTo], () => { statementPage.value = 1; });
+const statementHeaders = [
+  { title: 'Date', key: 'date' }, { title: 'Reference', key: 'reference' }, { title: 'Description', key: 'description' },
+  { title: 'Debit (AED)', key: 'debit', align: 'end' }, { title: 'Credit (AED)', key: 'credit', align: 'end' },
+  { title: 'Running Balance (AED)', key: 'balance', align: 'end' }
+].map(header => ({ ...header, sortable: false }));
+const reloadStatement = () => Promise.all([loadPurchases(), loadPayments()]);
+const exporting = ref('');
+async function downloadStatement(format) {
+  if (exporting.value || statementDateError.value) return;
+  exporting.value = format;
+  try {
+    const { data } = await $api.get(`/suppliers/${supplierId}/statement/${format}`, { responseType: 'blob', params: { from: statementFrom.value || undefined, to: statementTo.value || undefined } });
+    const url = URL.createObjectURL(data);
+    const link = document.createElement('a');
+    link.href = url; link.download = `supplier-${supplierId}-statement.${format}`;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch {
+    snackbar.text = 'Unable to download the statement. Please try again.';
+    snackbar.color = 'error'; snackbar.show = true;
+  } finally { exporting.value = ''; }
+}
 
 const paymentDialog = ref(false);
 const editDialog = ref(false);
@@ -456,10 +458,7 @@ const totalPaidAmount = computed(() => {
 });
 
 const totalOutstandingAmount = computed(() => {
-  return purchases.value.reduce((sum, p) => {
-    const due = parseFloat(p.amount || 0) - parseFloat(p.paid_amount || 0);
-    return sum + (due > 0 ? due : 0);
-  }, 0);
+  return allStatementRows.value.at(-1)?.balance || 0;
 });
 
 const pendingBillsCount = computed(() => {
@@ -491,6 +490,7 @@ const loadSupplier = async () => {
 
 const loadPurchases = async () => {
   loadingPurchases.value = true;
+  statementErrors.purchases = false;
   try {
     const response = await $api.get(`/suppliers/${supplierId}/purchases`);
     if (response.data.success) {
@@ -498,6 +498,7 @@ const loadPurchases = async () => {
     }
   } catch (error) {
     console.error('Error fetching purchases:', error);
+    statementErrors.purchases = true;
   } finally {
     loadingPurchases.value = false;
   }
@@ -505,6 +506,7 @@ const loadPurchases = async () => {
 
 const loadPayments = async () => {
   loadingPayments.value = true;
+  statementErrors.payments = false;
   try {
     const response = await $api.get(`/suppliers/${supplierId}/payments`);
     if (response.data.success) {
@@ -512,6 +514,7 @@ const loadPayments = async () => {
     }
   } catch (error) {
     console.error('Error fetching payments:', error);
+    statementErrors.payments = true;
   } finally {
     loadingPayments.value = false;
   }
@@ -524,6 +527,7 @@ onMounted(() => {
 });
 
 watch(tab, (newVal) => {
+  if (newVal === 'statement') reloadStatement();
   if (newVal === 'purchases') loadPurchases();
   if (newVal === 'payments') loadPayments();
 });
@@ -555,7 +559,7 @@ const onPaymentMade = () => {
 const formatDate = (dateString) => {
   if (!dateString) return '—';
   const date = new Date(dateString);
-  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Dubai' });
 };
 
 const getStatusColor = (status) => {
@@ -568,6 +572,17 @@ const getStatusColor = (status) => {
 </script>
 
 <style scoped>
+.statement-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:12px; }
+.statement-toolbar .statement-date-picker { flex:0 0 190px; width:190px; min-width:190px; max-width:190px; }
+.supplier-contact-toggle { display:flex; align-items:center; justify-content:space-between; gap:16px; width:100%; text-align:left; color:inherit; border-radius:10px; }
+.supplier-contact-toggle:focus-visible { outline:2px solid rgb(var(--v-theme-primary)); outline-offset:5px; }
+.supplier-contact-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:20px; }
+.supplier-contact-grid dt { font-size:12px; opacity:.65; margin-bottom:6px; }
+.supplier-contact-grid dd { font-size:14px; font-weight:500; white-space:pre-wrap; overflow-wrap:anywhere; }
+.supplier-contact-notes { border-top:1px solid rgba(var(--v-theme-on-surface),.07); }
+.supplier-contact-notes p { white-space:pre-wrap; overflow-wrap:anywhere; }
+@media(max-width:1100px) { .supplier-contact-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:600px) { .supplier-contact-grid { grid-template-columns:1fr; gap:14px; } }
 :deep(.ethereal-table th) {
   background: transparent !important;
   color: #94A3B8 !important;

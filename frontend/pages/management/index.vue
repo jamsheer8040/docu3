@@ -19,11 +19,13 @@
           <v-tab value="shareholders" prepend-icon="mdi-account-group" class="font-weight-bold text-none">Shareholders</v-tab>
           <v-tab value="capital" prepend-icon="mdi-bank-transfer" class="font-weight-bold text-none">Capital Transactions</v-tab>
           <v-tab value="dividends" prepend-icon="mdi-chart-pie" class="font-weight-bold text-none">Dividends</v-tab>
-          <v-tab value="setup" prepend-icon="mdi-cog" class="font-weight-bold text-none">Setup</v-tab>
+          <v-tab v-if="auth.can('settings', 'write')" value="setup" prepend-icon="mdi-cog" class="font-weight-bold text-none">Setup</v-tab>
         </v-tabs>
       </v-col>
     </v-row>
 
+    <v-alert v-if="management.refreshWarning" type="warning" class="mb-4">{{ management.refreshWarning }}</v-alert>
+    <v-alert v-else-if="management.error" type="error" class="mb-4">{{ management.error }}</v-alert>
     <!-- Tab Content -->
     <v-window v-model="activeTab" class="bg-transparent" style="overflow: visible;">
       <!-- DASHBOARD -->
@@ -48,7 +50,7 @@
 
       <!-- SETUP -->
       <v-window-item value="setup">
-        <ManagementSetup v-if="activeTab === 'setup'" />
+        <ManagementSetup v-if="activeTab === 'setup' && auth.can('settings', 'write')" />
       </v-window-item>
     </v-window>
   </v-container>
@@ -56,6 +58,10 @@
 
 <script setup>
 import { ref } from 'vue';
+import { useAuthStore } from '~/stores/auth';
+import { useManagementStore } from '~/stores/management';
+const auth = useAuthStore();
+const management = useManagementStore();
 
 const activeTab = ref('dashboard');
 </script>

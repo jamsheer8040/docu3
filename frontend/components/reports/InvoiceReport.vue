@@ -19,7 +19,7 @@
     <!-- Filters -->
     <v-card class="pa-4 border rounded-xl mb-6 bg-surface" variant="flat">
       <v-row dense>
-        <v-col cols="12" md="3">
+        <v-col cols="12" sm="6" md="4" xl="2">
           <v-text-field
             v-model="filters.from"
             type="date"
@@ -32,7 +32,7 @@
             class="search-pill"
           ></v-text-field>
         </v-col>
-        <v-col cols="12" md="3">
+        <v-col cols="12" sm="6" md="4" xl="2">
           <v-text-field
             v-model="filters.to"
             type="date"
@@ -45,7 +45,7 @@
             class="search-pill"
           ></v-text-field>
         </v-col>
-        <v-col cols="12" md="2">
+        <v-col cols="12" sm="6" md="4" xl="2">
           <v-select
             v-model="filters.status"
             :items="['All', 'Draft', 'Sent', 'Issued', 'Paid', 'Partially Paid', 'Cancelled']"
@@ -58,7 +58,7 @@
             class="search-pill"
           ></v-select>
         </v-col>
-        <v-col cols="12" md="2">
+        <v-col cols="12" sm="6" md="4" xl="2">
           <v-text-field
             v-model="filters.search"
             placeholder="Search Inv/Customer"
@@ -70,15 +70,20 @@
             class="search-pill"
           ></v-text-field>
         </v-col>
-        <v-col cols="12" md="2" class="d-flex align-center">
-          <v-btn color="primary" class="btn-3d" block height="48" @click="fetchData">Apply Filters</v-btn>
+        <v-col cols="12" sm="6" md="4" xl="2">
+          <v-select v-model="filters.aging" :items="agingOptions" label="Invoice aging" prepend-inner-icon="mdi-clock-outline" variant="solo" flat density="comfortable" hide-details class="search-pill" @update:model-value="applyFilters" />
+        </v-col>
+        <v-col cols="12" sm="6" md="4" xl="2" class="d-flex align-center">
+          <v-btn color="primary" class="btn-3d" block height="48" @click="applyFilters">Apply Filters</v-btn>
         </v-col>
       </v-row>
     </v-card>
 
+    <p class="text-caption text-medium-emphasis mb-4">Aging shows all invoices at least the selected number of days old, counted from the invoice date.</p>
     <!-- Data Table -->
     <v-card class="border rounded-xl" variant="flat">
       <v-data-table-server
+        v-model:page="currentPage"
         v-model:items-per-page="itemsPerPage"
         :headers="headers"
         :items="items"
@@ -133,9 +138,12 @@
 import { useUIStore } from '~/stores/ui'
 
 const uiStore = useUIStore()
-import { ref, reactive, computed } from 'vue';
+import { ref, reactive, computed, watch } from 'vue';
 
 const { $api } = useNuxtApp();
+const route = useRoute();
+const queryAging = () => ['30', '60', '90', '120'].includes(route.query.aging) ? route.query.aging : '';
+const queryDate = key => typeof route.query[key] === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(route.query[key]) ? route.query[key] : '';
 
 const loading = ref(false);
 const items = ref([]);
@@ -144,11 +152,19 @@ const itemsPerPage = ref(15);
 const currentPage = ref(1);
 
 const filters = reactive({
-  from: '',
-  to: '',
+  from: queryDate('from'),
+  to: queryDate('to'),
   status: 'All',
+  aging: queryAging(),
   search: ''
 });
+const agingOptions = [
+  { title: 'All ages', value: '' },
+  { title: '30+ days', value: '30' },
+  { title: '60+ days', value: '60' },
+  { title: '90+ days', value: '90' },
+  { title: '120+ days', value: '120' }
+];
 
 const currentTotals = computed(() => {
   return items.value.reduce((acc, curr) => {
@@ -189,6 +205,7 @@ const fetchData = async () => {
     if (filters.to) params.date_to = filters.to;
     if (filters.status !== 'All') params.status = filters.status;
     if (filters.search) params.search = filters.search;
+    if (filters.aging) params.aging = filters.aging;
 
     const res = await $api.get('/invoices', { params });
     if (res.data?.success) {
@@ -197,10 +214,24 @@ const fetchData = async () => {
     }
   } catch (err) {
     console.error('Failed to fetch invoice report', err);
+    items.value = [];
+    totalItems.value = 0;
+    uiStore.showError('Failed to fetch invoice report');
   } finally {
     loading.value = false;
   }
 };
+
+const applyFilters = () => {
+  currentPage.value = 1;
+  fetchData();
+};
+watch(() => [route.query.aging, route.query.from, route.query.to], () => {
+  filters.aging = queryAging();
+  filters.from = queryDate('from');
+  filters.to = queryDate('to');
+  applyFilters();
+});
 
 const onOptionsUpdate = ({ page, itemsPerPage: limit }) => {
   currentPage.value = page;

@@ -10,7 +10,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
 
   // Always refresh user/tenant status from server on navigation (ensures approved tenants see updated status)
   if (authStore.isAuthenticated && from?.path !== to.path) {
-    await authStore.fetchMe();
+    await Promise.all([authStore.fetchMe(), configStore.fetchSettings()]);
   }
 
   // License Expiry Check
@@ -43,24 +43,33 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   }
 
   // Developer Strict Access Guard
+  if (to.path.startsWith('/employee-tracking') && authStore.user?.role_type === 'CustomerPortal') return navigateTo('/documents');
   // A developer should ONLY be allowed on the /developer and /saas-portal pages.
   if (authStore.isAuthenticated && authStore.user?.role === 'Developer' && !['/developer', '/developer/', '/saas-portal', '/saas-portal/'].includes(to.path)) {
     return navigateTo('/saas-portal');
   }
 
+  if (authStore.isAuthenticated && to.path.startsWith('/commissions') && !configStore.commissionEnabled) return navigateTo('/');
+
   // RBAC Check for protected routes
   if (authRequired && authStore.isAuthenticated) {
     const routePermissions: Record<string, string> = {
       '/customers': 'customers',
+      '/leads': 'leads',
+      '/purchases': 'suppliers',
+      '/suppliers': 'suppliers',
       '/documents': 'documents',
       '/sales-orders': 'sales_orders',
+      '/quotations': 'quotations',
       '/services': 'services',
+      '/employee-tracking': 'employee_tracking',
       '/invoices': 'invoices',
       '/expenses': 'expenses',
       '/wallet': 'wallet',
       '/reports': 'reports',
       '/settings': 'settings',
       '/management': 'management'
+      ,'/commissions': 'commissions'
     };
 
     // Find if the current path (or any parent path) requires a permission
@@ -68,7 +77,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     
     if (requiredModule) {
       const moduleName = routePermissions[requiredModule];
-      if (!authStore.can(moduleName, 'read')) {
+      if (!authStore.can(moduleName, /^\/[^/]+\/\d+\/?$/.test(to.path) ? 'detail' : 'read')) {
         console.warn(`Access denied to ${to.path}. Missing ${moduleName} permission.`);
         return navigateTo('/'); // Redirect to dashboard if no permission
       }

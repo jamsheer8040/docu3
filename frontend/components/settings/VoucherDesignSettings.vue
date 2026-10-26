@@ -77,10 +77,11 @@
                   <v-col cols="12" md="6">
                     <v-select
                       v-model="activeTemplate.language"
-                      :items="['English', 'Arabic', 'Bilingual']"
+                      :items="['English']"
                       label="Document Language"
                       density="compact"
                       variant="outlined"
+                      readonly
                     ></v-select>
                   </v-col>
                   <v-col cols="12" md="6">
@@ -199,8 +200,8 @@
                   <v-col cols="6" md="4">
                     <v-checkbox v-model="activeTemplate.header_config.showWebsite" label="Company Website" density="compact" hide-details></v-checkbox>
                   </v-col>
-                  <v-col cols="6" md="4">
-                    <v-checkbox v-model="activeTemplate.header_config.showTaxNumber" label="TRN / VAT No" density="compact" hide-details></v-checkbox>
+                  <v-col cols="6" md="4" v-if="vatEnabled">
+                    <v-checkbox v-model="activeTemplate.header_config.showTaxNumber" label="TRN / VAT No" density="compact" hide-details disabled></v-checkbox>
                   </v-col>
                   <v-col cols="6" md="4">
                     <v-checkbox v-model="activeTemplate.header_config.showQRCode" label="Header QR Code" density="compact" hide-details></v-checkbox>
@@ -270,7 +271,8 @@
               <v-expansion-panel-text class="pt-2">
                 <div class="text-caption text-grey-darken-2 mb-2 font-weight-bold">Choose visible columns and reorder them:</div>
                 <v-list density="compact" class="border rounded-lg bg-grey-lighten-5">
-                  <v-list-item v-for="(col, index) in activeTemplate.table_config" :key="col.key" class="border-bottom">
+                  <template v-for="(col, index) in activeTemplate.table_config" :key="col.key">
+                    <v-list-item v-if="col.key !== 'vat' || vatEnabled" class="border-bottom">
                     <div class="d-flex align-center justify-space-between w-100">
                       <v-checkbox
                         v-model="col.visible"
@@ -284,7 +286,8 @@
                         <v-btn icon="mdi-chevron-down" density="comfortable" variant="text" size="small" :disabled="index === activeTemplate.table_config.length - 1" @click="moveColumn(index, 1)"></v-btn>
                       </div>
                     </div>
-                  </v-list-item>
+                    </v-list-item>
+                  </template>
                 </v-list>
               </v-expansion-panel-text>
             </v-expansion-panel>
@@ -302,8 +305,8 @@
                   <v-col cols="6" md="4">
                     <v-checkbox v-model="activeTemplate.totals_config.showDiscount" label="Discount" density="compact" hide-details></v-checkbox>
                   </v-col>
-                  <v-col cols="6" md="4">
-                    <v-checkbox v-model="activeTemplate.totals_config.showVAT" label="VAT / Tax" density="compact" hide-details></v-checkbox>
+                  <v-col cols="6" md="4" v-if="vatEnabled">
+                    <v-checkbox v-model="activeTemplate.totals_config.showVAT" label="VAT / Tax" density="compact" hide-details disabled></v-checkbox>
                   </v-col>
                   <v-col cols="6" md="4">
                     <v-checkbox v-model="activeTemplate.totals_config.showGovernmentFees" label="Gov. Fees" density="compact" hide-details></v-checkbox>
@@ -410,15 +413,15 @@
           <!-- Printable Sheet Wrapper -->
           <v-card flat class="preview-sheet mx-auto elevation-4 d-flex flex-column pa-6 bg-white" :style="getBrandingStyles()">
             <!-- Document Header -->
-            <div class="preview-header d-flex justify-space-between pb-4 mb-4 border-b-2" :style="{ borderBottomColor: activeTemplate.branding_config.primaryColor }">
+            <div class="preview-header d-flex justify-space-between pb-4 mb-4 border-b-2 pa-4" :style="{ borderBottomColor: activeTemplate.branding_config.primaryColor, backgroundColor: activeTemplate.header_config.headerBgColor || 'transparent' }">
               <div>
                 <div v-if="activeTemplate.header_config.showLogo" class="preview-logo-placeholder mb-2 d-flex align-center justify-center font-weight-black">
                   LOGO
                 </div>
-                <div v-if="activeTemplate.header_config.showCompanyName" class="text-h6 font-weight-black lh-tight">
+                <div v-if="activeTemplate.header_config.showCompanyName" class="text-h6 font-weight-black lh-tight font-custom">
                   Your Corporation LLC
                 </div>
-                <div class="text-caption text-grey-darken-2" style="font-size: 10px !important;">
+                <div class="text-grey-darken-2 mt-1" style="font-size: 0.9em;">
                   <div v-if="activeTemplate.header_config.showAddress">123 Business Avenue, Downtown Dubai, UAE</div>
                   <div v-if="activeTemplate.header_config.showPhone">Phone: +971 4 123 4567</div>
                   <div v-if="activeTemplate.header_config.showEmail">Email: contact@corporation.com</div>
@@ -427,8 +430,8 @@
                 </div>
               </div>
               <div class="text-right d-flex flex-column align-end">
-                <div class="text-h5 font-weight-bold text-uppercase tracking-wider" :style="{ color: activeTemplate.branding_config.primaryColor }">
-                  {{ selectedVoucherType }}
+                <div class="text-h5 font-weight-bold text-uppercase tracking-wider font-custom" :style="{ color: activeTemplate.branding_config.primaryColor }">
+                  {{ vatEnabled ? 'TAX ' + selectedVoucherType : selectedVoucherType }}
                 </div>
                 <div v-if="activeTemplate.header_config.showQRCode" class="preview-qr-placeholder mt-2 d-flex align-center justify-center">
                   <v-icon icon="mdi-qrcode" size="48" color="grey-darken-1"></v-icon>
@@ -437,9 +440,9 @@
             </div>
 
             <!-- Client / Meta Details -->
-            <v-row class="mb-4 text-caption text-grey-darken-3" style="font-size: 11px !important;">
+            <v-row class="mb-4 text-grey-darken-3" style="font-size: 0.95em;">
               <v-col cols="7">
-                <div class="font-weight-bold mb-1 text-slate-800" style="font-size: 12px;">CLIENT DETAILS:</div>
+                <div class="font-weight-bold mb-1 text-slate-800" style="font-size: 1.1em;">CLIENT DETAILS:</div>
                 <div v-if="activeTemplate.info_config.showCustomerName"><span class="text-grey-darken-1">Client:</span> Bhai Bhai Grocery SPS LLC</div>
                 <div v-if="activeTemplate.info_config.showCustomerCode"><span class="text-grey-darken-1">Client Code:</span> CUST-8834</div>
                 <div v-if="activeTemplate.info_config.showContactPerson"><span class="text-grey-darken-1">Contact:</span> Emran H.</div>
@@ -448,7 +451,7 @@
                 <div v-if="activeTemplate.info_config.showCustomerAddress"><span class="text-grey-darken-1">Address:</span> Al Rolla Road, Sharjah, UAE</div>
               </v-col>
               <v-col cols="5" class="text-right">
-                <div class="font-weight-bold mb-1 text-slate-800" style="font-size: 12px;">DETAILS:</div>
+                <div class="font-weight-bold mb-1 text-slate-800" style="font-size: 1.1em;">DETAILS:</div>
                 <div v-if="activeTemplate.info_config.showVoucherNumber"><span class="text-grey-darken-1">Voucher No:</span> {{ formatNumberPreview() }}</div>
                 <div v-if="activeTemplate.info_config.showDate"><span class="text-grey-darken-1">Date:</span> 18/07/2026</div>
                 <div v-if="activeTemplate.info_config.showDueDate"><span class="text-grey-darken-1">Due Date:</span> 25/07/2026</div>
@@ -459,37 +462,28 @@
 
             <!-- Table -->
             <div class="flex-grow-1 mb-4" style="overflow: hidden;">
-              <table class="w-100 preview-table text-caption text-left" style="font-size: 11px !important;">
+              <table class="w-100 preview-table" style="font-size: 0.95em;">
                 <thead>
                   <tr :style="{ backgroundColor: activeTemplate.branding_config.secondaryColor + '15' }">
-                    <th v-for="col in visibleColumns" :key="col.key" class="pa-2 font-weight-bold text-slate-800" :style="{ borderBottom: '2px solid ' + activeTemplate.branding_config.primaryColor }">
+                    <th v-for="(col, index) in visibleColumns" :key="col.key" class="pa-2 font-weight-bold text-slate-800" 
+                        :class="index === visibleColumns.length - 1 ? 'text-right' : 'text-left'"
+                        :style="{ borderBottom: '2px solid ' + activeTemplate.branding_config.primaryColor }">
                       {{ col.label }}
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr class="border-bottom">
-                    <td v-for="col in visibleColumns" :key="col.key" class="pa-2 py-3 text-grey-darken-3">
-                      <span v-if="col.key === 'name'">Emirates ID Renewal</span>
-                      <span v-else-if="col.key === 'description'">2-Year residency card renewal processing fees</span>
-                      <span v-else-if="col.key === 'quantity'">1</span>
-                      <span v-else-if="col.key === 'unitPrice'">AED 350.00</span>
-                      <span v-else-if="col.key === 'discount'">AED 0.00</span>
-                      <span v-else-if="col.key === 'vat'">AED 17.50 (5%)</span>
-                      <span v-else-if="col.key === 'total'">AED 367.50</span>
-                      <span v-else-if="col.key === 'remarks'">Urgent service</span>
-                    </td>
-                  </tr>
-                  <tr class="border-bottom bg-grey-lighten-5">
-                    <td v-for="col in visibleColumns" :key="col.key" class="pa-2 py-3 text-grey-darken-3">
-                      <span v-if="col.key === 'name'">Labor Card Insurance</span>
-                      <span v-else-if="col.key === 'description'">Compulsory labor guarantee insurance coverage</span>
-                      <span v-else-if="col.key === 'quantity'">1</span>
-                      <span v-else-if="col.key === 'unitPrice'">AED 189.00</span>
-                      <span v-else-if="col.key === 'discount'">AED 10.00</span>
-                      <span v-else-if="col.key === 'vat'">AED 8.95 (5%)</span>
-                      <span v-else-if="col.key === 'total'">AED 187.95</span>
-                      <span v-else-if="col.key === 'remarks'">-</span>
+                  <tr v-for="n in 2" :key="n" :style="{ borderBottom: '1px solid ' + activeTemplate.branding_config.secondaryColor + '20' }">
+                    <td v-for="(col, index) in visibleColumns" :key="col.key" class="pa-2 py-3 text-grey-darken-3"
+                        :class="index === visibleColumns.length - 1 ? 'text-right' : 'text-left'">
+                      <template v-if="col.key === 'name'">{{ n === 1 ? 'Emirates ID Renewal' : 'Labor Card Insurance' }}</template>
+                      <template v-if="col.key === 'description'">{{ n === 1 ? 'Standard processing' : '2-year coverage' }}</template>
+                      <template v-if="col.key === 'quantity'">1</template>
+                      <template v-if="col.key === 'unitPrice'">{{ n === 1 ? 'AED 350.00' : 'AED 189.00' }}</template>
+                      <template v-if="col.key === 'discount'">AED 0.00</template>
+                      <template v-if="col.key === 'vat'">5%</template>
+                      <template v-if="col.key === 'total'">{{ n === 1 ? 'AED 367.50' : 'AED 187.95' }}</template>
+                      <template v-if="col.key === 'remarks'">-</template>
                     </td>
                   </tr>
                 </tbody>
@@ -497,9 +491,9 @@
             </div>
 
             <!-- Calculation Columns -->
-            <div class="d-flex justify-space-between mb-4 text-caption" style="font-size: 11px !important;">
+            <div class="d-flex justify-space-between mb-4" style="font-size: 0.95em;">
               <div style="width: 50%;">
-                <div v-if="activeTemplate.footer_config.bankDetails" class="pa-2 border rounded-lg bg-grey-lighten-5 mb-2" style="font-size: 9px !important;">
+                <div v-if="activeTemplate.footer_config.bankDetails" class="pa-2 border rounded-lg bg-grey-lighten-5 mb-2" style="font-size: 0.85em;">
                   <strong>BANK INSTRUCTIONS:</strong><br/>
                   {{ activeTemplate.footer_config.bankDetails }}
                 </div>
@@ -552,10 +546,10 @@
 
             <!-- Footer Signatures -->
             <div class="mt-auto pt-4 border-t-2" :style="{ borderTopColor: activeTemplate.branding_config.primaryColor + '40' }">
-              <div v-if="activeTemplate.footer_config.termsConditions" class="text-caption text-grey-darken-2 mb-4" style="font-size: 8px !important; line-height: 1.2;">
+              <div v-if="activeTemplate.footer_config.termsConditions" class="text-grey-darken-2 mb-4" style="font-size: 0.75em; line-height: 1.2;">
                 <strong>TERMS & CONDITIONS:</strong> {{ activeTemplate.footer_config.termsConditions }}
               </div>
-              <div class="d-flex justify-space-between align-end text-center text-caption font-weight-bold" style="font-size: 9px !important;">
+              <div class="d-flex justify-space-between align-end text-center font-weight-bold" style="font-size: 0.85em;">
                 <div v-if="activeTemplate.footer_config.showPreparedBy" style="width: 25%;">
                   <div class="border-bottom mb-1" style="height: 30px;"></div>
                   <span>Prepared By</span>
@@ -703,12 +697,16 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useNuxtApp } from '#app'
 import { useUIStore } from '~/stores/ui'
+import { useConfigStore } from '~/stores/config'
 
 const { $api } = useNuxtApp()
 const uiStore = useUIStore()
+const configStore = useConfigStore()
+
+
 
 // Component States
 const currentTab = ref('design')
@@ -821,6 +819,47 @@ const getDefaultConfigs = () => ({
 // Loaded active template
 const activeTemplate = ref(null)
 
+// VAT Configuration Lock
+const vatEnabled = computed(() => configStore.settings?.is_vat_enabled === 'true' || configStore.settings?.is_vat_enabled === true)
+
+// Use specific watch to prevent infinite reactivity loops
+watch([vatEnabled, () => activeTemplate.value?.id], ([isVatEnabled]) => {
+  if (activeTemplate.value) {
+    // Ensure VAT config keys exist in old templates
+    if (activeTemplate.value.header_config && activeTemplate.value.header_config.showTaxNumber === undefined) {
+      activeTemplate.value.header_config.showTaxNumber = false
+    }
+    if (activeTemplate.value.totals_config && activeTemplate.value.totals_config.showVAT === undefined) {
+      activeTemplate.value.totals_config.showVAT = false
+    }
+    
+    if (activeTemplate.value.table_config) {
+      let vatTableCol = activeTemplate.value.table_config.find(c => c.key === 'vat')
+      // Inject the VAT column if it's missing entirely (backward compatibility)
+      if (!vatTableCol) {
+        vatTableCol = { key: 'vat', label: 'VAT', visible: false }
+        // Insert it right before "total" or at the end
+        const totalIdx = activeTemplate.value.table_config.findIndex(c => c.key === 'total')
+        if (totalIdx !== -1) {
+          activeTemplate.value.table_config.splice(totalIdx, 0, vatTableCol)
+        } else {
+          activeTemplate.value.table_config.push(vatTableCol)
+        }
+      }
+      
+      if (isVatEnabled) {
+        if (activeTemplate.value.header_config) activeTemplate.value.header_config.showTaxNumber = true
+        if (activeTemplate.value.totals_config) activeTemplate.value.totals_config.showVAT = true
+        vatTableCol.visible = true
+      } else {
+        if (activeTemplate.value.header_config) activeTemplate.value.header_config.showTaxNumber = false
+        if (activeTemplate.value.totals_config) activeTemplate.value.totals_config.showVAT = false
+        vatTableCol.visible = false
+      }
+    }
+  }
+}, { immediate: true })
+
 const filteredTemplates = computed(() => {
   return allTemplates.value.filter(t => t.voucher_type === selectedVoucherType.value)
 })
@@ -906,9 +945,38 @@ const formatNumberPreview = () => {
 const getBrandingStyles = () => {
   if (!activeTemplate.value || !activeTemplate.value.branding_config) return {}
   const brand = activeTemplate.value.branding_config
+  
+  let layoutStyles = {}
+  if (activeTemplate.value.layout === 'Half A4') {
+    layoutStyles = {
+      minHeight: '421px',
+      maxHeight: '421px'
+    }
+  } else if (activeTemplate.value.layout === 'A4 Landscape') {
+    layoutStyles = {
+      maxWidth: '842px',
+      minHeight: '595px',
+      maxHeight: '595px'
+    }
+  } else {
+    // Default A4 Portrait
+    layoutStyles = {
+      maxWidth: '595px',
+      minHeight: '842px',
+      maxHeight: '842px'
+    }
+  }
+
+  let direction = 'ltr'
+  if (activeTemplate.value.language === 'Arabic') {
+    direction = 'rtl'
+  }
+
   return {
-    fontFamily: `${brand.fontFamily}, sans-serif`,
-    fontSize: `${brand.fontSize}px`
+    fontFamily: `${brand.fontFamily}, sans-serif !important`,
+    fontSize: `${brand.fontSize}px`,
+    direction: direction,
+    ...layoutStyles
   }
 }
 
@@ -1109,11 +1177,17 @@ onMounted(async () => {
 }
 .preview-sheet {
   width: 100%;
-  max-width: 595px; /* A4 Ratio width */
-  min-height: 842px; /* A4 Ratio height */
   border: 1px solid rgba(0,0,0,0.1) !important;
   position: relative;
   overflow: hidden;
+  transition: all 0.3s ease;
+}
+.preview-sheet,
+.preview-sheet * {
+  font-family: inherit !important;
+}
+.font-custom {
+  font-family: inherit !important;
 }
 .preview-logo-placeholder {
   width: 60px;

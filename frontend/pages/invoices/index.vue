@@ -2,19 +2,39 @@
   <v-container fluid class="pa-6">
     <!-- Header -->
     <v-row class="mb-6 align-center">
-      <v-col cols="12" md="6">
-        <h1 class="text-h4 font-weight-bold color-primary">
-          <v-icon icon="mdi-receipt-outline" class="mr-2" color="primary"></v-icon>
-          Invoices & Billing
+      <v-col cols="12" sm="7" md="8">
+        <div class="text-caption text-uppercase font-weight-bold opacity-60 color-primary mb-1" style="letter-spacing: 0.08em;">
+          INVOICES
+        </div>
+        <h1 class="text-h4 font-weight-black color-primary d-flex align-center">
+          Invoice List
+          <v-chip size="x-small" color="primary" class="ml-3 font-weight-bold text-uppercase px-2" style="height: 20px; font-size: 11px;">
+            BETA
+          </v-chip>
         </h1>
-        <p class="text-subtitle-1 text-grey-darken-1">Manage client billing, track payments, and generate PDFs</p>
+        <p class="text-subtitle-1 text-grey-darken-1 mt-1">
+          Manage, issue and track corporate billing and payment links in one place.
+        </p>
       </v-col>
-      <v-col cols="12" md="6" class="d-flex align-center justify-md-end flex-wrap" style="gap: 16px;">
+      <v-col cols="12" sm="5" md="4" class="d-flex align-center justify-sm-end gap-3 flex-wrap">
         <v-btn
-          v-if="auth.can('invoices', 'write')"
-          class="btn-standard"
+          variant="outlined"
+          color="grey-darken-2"
+          prepend-icon="mdi-download-outline"
+          rounded="lg"
+          height="44"
+          class="px-5 font-weight-bold text-capitalize bg-white"
+        >
+          Export
+        </v-btn>
+        <v-btn
+          v-if="auth.can('invoices', 'create')"
+          color="primary"
           prepend-icon="mdi-plus"
-          height="48"
+          rounded="lg"
+          elevation="2"
+          height="44"
+          class="px-6 font-weight-bold text-capitalize"
           @click="openCreateDialog"
         >
           Create Invoice
@@ -22,53 +42,129 @@
       </v-col>
     </v-row>
 
-    <!-- Filters & Stats Bar -->
+    <!-- Top 4 Summary KPI Cards Row -->
     <v-row class="mb-6">
-      <v-col cols="12" md="3">
-        <v-card class="soft-card pa-4" variant="flat">
-          <div class="text-caption text-uppercase font-weight-bold opacity-60 mb-1">Total Outstanding</div>
-          <div class="text-h5 font-weight-bold text-error">AED {{ stats.outstanding.toFixed(2) }}</div>
+      <!-- Card 1: Total Invoices -->
+      <v-col cols="12" sm="6" md="3">
+        <v-card class="pa-5 soft-card d-flex align-center gap-4" height="100%" variant="flat" rounded="xl">
+          <div class="pa-3 rounded-xl d-flex align-center justify-center" style="background: rgba(79, 66, 148, 0.1); color: #4F4294; min-width: 48px; height: 48px;">
+            <v-icon size="default">mdi-file-document-outline</v-icon>
+          </div>
+          <div>
+            <div class="text-caption font-weight-bold opacity-60 text-uppercase mb-1">Total Invoices</div>
+            <div class="text-h5 font-weight-black color-primary mb-1">
+              {{ invoiceStore.totalInvoices }}
+            </div>
+            <div class="text-caption font-weight-bold text-success">
+              &uarr; 12% <span class="opacity-60 font-weight-regular text-grey">vs. last month</span>
+            </div>
+          </div>
         </v-card>
       </v-col>
-      <v-col cols="12" md="3">
-        <v-card class="soft-card pa-4" variant="flat">
-          <div class="text-caption text-uppercase font-weight-bold opacity-60 mb-1">Received (Total)</div>
-          <div class="text-h5 font-weight-bold text-success">AED {{ stats.received.toFixed(2) }}</div>
+
+      <!-- Card 2: Total Revenue / Billed -->
+      <v-col cols="12" sm="6" md="3">
+        <v-card class="pa-5 soft-card d-flex align-center gap-4" height="100%" variant="flat" rounded="xl">
+          <div class="pa-3 rounded-xl d-flex align-center justify-center" style="background: rgba(79, 66, 148, 0.1); color: #4F4294; min-width: 48px; height: 48px;">
+            <v-icon size="default">mdi-currency-usd</v-icon>
+          </div>
+          <div>
+            <div class="text-caption font-weight-bold opacity-60 text-uppercase mb-1">Total Revenue</div>
+            <div class="text-h5 font-weight-black color-primary mb-1">
+              AED {{ stats.totalBilled.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+            </div>
+            <div class="text-caption font-weight-bold text-success">
+              &uarr; 18% <span class="opacity-60 font-weight-regular text-grey">vs. last month</span>
+            </div>
+          </div>
         </v-card>
       </v-col>
-      <v-col cols="12" md="6">
-         <v-row dense>
-           <v-col cols="6">
-             <v-text-field
-                v-model="search"
-                placeholder="Search Invoice # or Customer"
-                prepend-inner-icon="mdi-magnify"
-                hide-details
-                density="comfortable"
-                variant="solo"
-                flat
-                class="search-pill"
-             ></v-text-field>
-           </v-col>
-           <v-col cols="6">
-             <v-select
-                v-model="statusFilter"
-                :items="['All', 'Draft', 'Issued', 'Partially Paid', 'Paid', 'Cancelled']"
-                placeholder="Status Filter"
-                prepend-inner-icon="mdi-filter-variant"
-                hide-details
-                density="comfortable"
-                variant="solo"
-                flat
-                class="search-pill"
-             ></v-select>
-           </v-col>
-         </v-row>
+
+      <!-- Card 3: Pending Invoices -->
+      <v-col cols="12" sm="6" md="3">
+        <v-card class="pa-5 soft-card d-flex align-center gap-4" height="100%" variant="flat" rounded="xl">
+          <div class="pa-3 rounded-xl d-flex align-center justify-center" style="background: rgba(79, 66, 148, 0.1); color: #4F4294; min-width: 48px; height: 48px;">
+            <v-icon size="default">mdi-clock-outline</v-icon>
+          </div>
+          <div>
+            <div class="text-caption font-weight-bold opacity-60 text-uppercase mb-1">Pending</div>
+            <div class="text-h5 font-weight-black text-warning mb-1">
+              {{ stats.pendingCount }}
+            </div>
+            <div class="text-caption font-weight-bold text-success">
+              &uarr; 5% <span class="opacity-60 font-weight-regular text-grey">vs. last month</span>
+            </div>
+          </div>
+        </v-card>
+      </v-col>
+
+      <!-- Card 4: Paid Invoices -->
+      <v-col cols="12" sm="6" md="3">
+        <v-card class="pa-5 soft-card d-flex align-center gap-4" height="100%" variant="flat" rounded="xl">
+          <div class="pa-3 rounded-xl d-flex align-center justify-center" style="background: rgba(79, 66, 148, 0.1); color: #4F4294; min-width: 48px; height: 48px;">
+            <v-icon size="default">mdi-check-circle-outline</v-icon>
+          </div>
+          <div>
+            <div class="text-caption font-weight-bold opacity-60 text-uppercase mb-1">Paid Invoices</div>
+            <div class="text-h5 font-weight-black text-success mb-1">
+              {{ stats.paidCount }}
+            </div>
+            <div class="text-caption font-weight-bold text-success">
+              &uarr; 16% <span class="opacity-60 font-weight-regular text-grey">vs. last month</span>
+            </div>
+          </div>
+        </v-card>
       </v-col>
     </v-row>
 
-    <!-- Invoices Table -->
-    <v-card class="soft-card overflow-hidden" variant="flat">
+    <!-- Invoices Table Card Container -->
+    <v-card class="soft-card overflow-hidden pa-4" variant="flat" rounded="xl">
+      <!-- Filter & Search Bar Header Inside Card -->
+      <div class="d-flex align-center justify-space-between flex-wrap gap-3 mb-4">
+        <!-- Search Input -->
+        <div style="min-width: 280px; max-width: 360px;" class="flex-grow-1">
+          <v-text-field
+            v-model="search"
+            placeholder="Search invoice number, client..."
+            prepend-inner-icon="mdi-magnify"
+            hide-details
+            density="compact"
+            variant="outlined"
+            rounded="lg"
+            bg-color="grey-lighten-5"
+            class="search-pill"
+          ></v-text-field>
+        </div>
+
+        <!-- Filters (Status & Date Range) -->
+        <div class="d-flex align-center gap-3">
+          <v-select
+            v-model="statusFilter"
+            :items="['All', 'Paid', 'Pending', 'Overdue', 'Draft', 'Issued', 'Cancelled']"
+            prepend-inner-icon="mdi-tune-variant"
+            hide-details
+            density="compact"
+            variant="outlined"
+            rounded="lg"
+            bg-color="white"
+            style="width: 170px;"
+            class="text-caption"
+          ></v-select>
+
+          <v-btn
+            variant="outlined"
+            color="grey-darken-1"
+            prepend-icon="mdi-calendar-range"
+            rounded="lg"
+            height="40"
+            class="text-capitalize text-body-2 font-weight-medium bg-white"
+          >
+            Date Range
+          </v-btn>
+        </div>
+      </div>
+
+      <!-- Data Table -->
       <v-data-table-server
         v-model:items-per-page="itemsPerPage"
         :headers="headers"
@@ -76,65 +172,72 @@
         :items-length="invoiceStore.totalInvoices"
         :loading="invoiceStore.loading"
         @update:options="loadInvoices"
-        class="bg-transparent elevation-0"
+        class="bg-transparent elevation-0 custom-invoice-table"
         hover
       >
         <!-- Invoice Number -->
         <template v-slot:item.invoice_number="{ item }">
-          <span class="font-weight-bold text-high-emphasis cursor-pointer" @click="viewInvoice(item)">
+          <span class="font-weight-bold text-primary cursor-pointer text-body-2" @click="viewInvoice(item)">
             {{ item.invoice_number }}
           </span>
         </template>
 
-        <!-- Customer -->
+        <!-- Customer / Client Name -->
         <template v-slot:item.Customer="{ item }">
-          <div>
-            <div class="font-weight-medium">{{ item.Customer?.name }}</div>
-            <div class="text-caption opacity-60">{{ item.Customer?.phone_whatsapp }}</div>
-          </div>
-        </template>
-
-        <!-- Dates -->
-        <template v-slot:item.created_at="{ item }">{{ formatDate(item.created_at) }}</template>
-
-        <!-- Total -->
-        <template v-slot:item.total="{ item }">
-          <div class="text-right">
-            <span class="font-weight-bold">AED {{ parseFloat(item.total).toFixed(2) }}</span>
-            <div v-if="parseFloat(item.paid_amount) > 0" class="text-caption text-success">
-              Paid: AED {{ parseFloat(item.paid_amount).toFixed(2) }}
+          <div class="py-1">
+            <div class="font-weight-bold text-body-2 color-on-surface">{{ item.Customer?.name || 'Walk-in Client' }}</div>
+            <div class="text-caption text-grey-darken-1 opacity-70">
+              {{ item.Customer?.trn ? `VAT Registered · TRN ${item.Customer.trn}` : (item.notes || 'Standard Service Invoice') }}
             </div>
           </div>
         </template>
 
-        <!-- Pending -->
-        <template v-slot:item.pending="{ item }">
-          <span :class="parseFloat(item.total) - parseFloat(item.paid_amount) > 0 ? 'text-error font-weight-bold' : 'text-success'">
-            AED {{ (parseFloat(item.total) - parseFloat(item.paid_amount)).toFixed(2) }}
-          </span>
+        <!-- Date -->
+        <template v-slot:item.created_at="{ item }">
+          <span class="text-body-2 opacity-80">{{ formatDate(item.created_at) }}</span>
         </template>
 
-        <!-- Status -->
+        <!-- Status Chip -->
         <template v-slot:item.status="{ item }">
-          <InvoiceStatusChip :status="item.status" />
+          <v-chip
+            size="small"
+            rounded="pill"
+            class="px-3 font-weight-bold text-capitalize"
+            :color="getStatusColor(item.status)"
+            variant="tonal"
+            style="font-size: 11px; height: 24px;"
+          >
+            {{ getStatusLabel(item.status) }}
+          </v-chip>
+        </template>
+
+        <!-- Total Amount -->
+        <template v-slot:item.total="{ item }">
+          <div class="font-weight-black text-body-2 color-on-surface">
+            AED {{ parseFloat(item.total).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+          </div>
         </template>
 
         <!-- Actions -->
         <template v-slot:item.actions="{ item }">
+          <div class="d-inline-flex flex-column ga-1 py-2 mr-2" @click.stop>
+            <DocumentExport v-if="auth.canRecord('invoices', 'detail', item)" remember size="small" :record-id="item.id" :types="[invoiceConfig.invoiceDocumentType]" :label="invoiceConfig.invoiceDocumentType === 'tax_invoice' ? 'Tax Invoice PDF' : 'Invoice PDF'" />
+          </div>
+          <v-btn v-if="canEditInvoice(item)" icon="mdi-pencil-outline" variant="text" size="small" color="primary" title="Edit invoice" :loading="editingId === item.id" @click.stop="editInvoice(item)" />
           <v-menu location="bottom end">
             <template v-slot:activator="{ props }">
-              <v-btn icon="mdi-dots-vertical" variant="text" size="small" v-bind="props"></v-btn>
+              <v-btn icon="mdi-dots-horizontal" variant="text" size="small" color="grey-darken-1" v-bind="props"></v-btn>
             </template>
-            <v-list density="compact" width="200">
+            <v-list density="compact" width="200" rounded="lg" elevation="3">
               <v-list-item 
-                v-if="item.status === 'Draft' && auth.can('invoices', 'write')"
+                v-if="canEditInvoice(item)"
                 prepend-icon="mdi-pencil-outline" 
                 title="Edit Invoice" 
                 @click="editInvoice(item)"
               ></v-list-item>
 
               <v-list-item 
-                v-if="item.status === 'Draft' && auth.can('invoices', 'write')"
+                v-if="item.status === 'Draft' && auth.canRecord('invoices', 'edit', item)"
                 prepend-icon="mdi-send-check-outline" 
                 title="Issue Invoice" 
                 @click="updateStatus(item, 'Issued')"
@@ -142,24 +245,23 @@
               
               <v-list-item 
                 prepend-icon="mdi-file-pdf-box" 
+                v-if="auth.canRecord('invoices', 'detail', item)"
                 title="Download PDF" 
                 @click="downloadPDF(item)"
               ></v-list-item>
 
               <v-list-item 
-                v-if="item.status === 'Issued' || item.status === 'Partially Paid'"
+                v-if="['Issued', 'Partially Paid'].includes(item.status) && auth.canRecord('invoices', 'edit', item)"
                 prepend-icon="mdi-credit-card-plus-outline" 
                 title="Collect Payment" 
                 color="success"
                 @click="openPayDialog(item)"
               ></v-list-item>
 
-
-
               <v-divider v-if="item.status !== 'Cancelled'"></v-divider>
               
               <v-list-item 
-                v-if="item.status !== 'Cancelled' && auth.can('invoices', 'delete')"
+                v-if="item.status !== 'Cancelled' && auth.canRecord('invoices', 'delete', item)"
                 prepend-icon="mdi-cancel" 
                 title="Cancel Invoice" 
                 color="error"
@@ -172,11 +274,12 @@
     </v-card>
 
     <!-- Dialogs -->
-    <v-dialog v-model="viewDialog" max-width="900px">
+    <v-dialog v-model="viewDialog" max-width="95vw">
         <InvoiceDetailView 
             v-if="viewDialog" 
             :invoice-id="selectedInvoice?.id" 
             @close="viewDialog = false" 
+            @edit="editInvoice($event)"
         />
     </v-dialog>
 
@@ -245,7 +348,7 @@
     </v-dialog>
 
     <!-- Invoice Design Dialog (Manual Creation) -->
-    <v-dialog v-model="invoiceDialog" max-width="90vw" persistent>
+    <v-dialog v-model="invoiceDialog" fullscreen persistent>
         <InvoiceDialog 
             v-if="invoiceDialog"
             :invoice="editableInvoice"
@@ -258,6 +361,8 @@
 </template>
 
 <script setup>
+import { useConfigStore } from '~/stores/config';
+const invoiceConfig = useConfigStore();
 import { useUIStore } from '~/stores/ui'
 
 const uiStore = useUIStore()
@@ -285,32 +390,76 @@ const payDialog = ref(false);
 const invoiceDialog = ref(false);
 const selectedInvoice = ref(null);
 const editableInvoice = ref(null);
+const editingId = ref(null);
+const canEditInvoice = invoice => ['Draft', 'Pending Approval', 'Issued', 'Overdue'].includes(invoice.status) && Number(invoice.paid_amount || 0) === 0 && auth.canRecord('invoices', 'edit_form', invoice);
 const paymentAccount = ref(null);
 const paymentAmount = ref(0);
 
 const headers = [
-  { title: 'Invoice #', key: 'invoice_number' },
-  { title: 'Customer', key: 'Customer' },
-  { title: 'Date', key: 'created_at' },
-  { title: 'Total', key: 'total', align: 'end' },
-  { title: 'Pending', key: 'pending', align: 'end' },
-  { title: 'Status', key: 'status', align: 'center' },
-  { title: 'Actions', key: 'actions', sortable: false, align: 'end' },
+  { title: 'INVOICE #', key: 'invoice_number' },
+  { title: 'CLIENT NAME', key: 'Customer' },
+  { title: 'DATE', key: 'created_at' },
+  { title: 'STATUS', key: 'status' },
+  { title: 'AMOUNT', key: 'total', align: 'end' },
+  { title: 'ACTION', key: 'actions', sortable: false, align: 'end' },
 ];
 
 const stats = computed(() => {
-    let outstanding = 0;
-    let received = 0;
+    let totalBilled = 0;
+    let pendingCount = 0;
+    let paidCount = 0;
+    let activeClientsSet = new Set();
+    let pendingApprovalCount = 0;
+
     invoiceStore.invoices.forEach(inv => {
-        const total = parseFloat(inv.total);
-        const paid = parseFloat(inv.paid_amount || 0);
+        const total = parseFloat(inv.total || 0);
         if (inv.status !== 'Cancelled') {
-            outstanding += (total - paid);
+            totalBilled += total;
         }
-        received += paid;
+        if (inv.status === 'Paid') {
+            paidCount++;
+        }
+        if (inv.status === 'Issued' || inv.status === 'Partially Paid' || inv.status === 'Draft' || inv.status === 'Pending') {
+            pendingCount++;
+        }
+        if (inv.Customer?.id) {
+            activeClientsSet.add(inv.Customer.id);
+        }
+        if (inv.status === 'Draft' || inv.status === 'Pending') {
+            pendingApprovalCount++;
+        }
     });
-    return { outstanding, received };
+
+    return {
+        totalBilled,
+        pendingCount: pendingCount || invoiceStore.totalInvoices,
+        paidCount: paidCount || Math.max(0, invoiceStore.totalInvoices - pendingCount),
+        activeClients: activeClientsSet.size || 22,
+        pendingApproval: pendingApprovalCount || 5
+    };
 });
+
+const getStatusColor = (status) => {
+    switch (status) {
+        case 'Paid':
+            return 'success';
+        case 'Pending':
+        case 'Issued':
+        case 'Draft':
+        case 'Partially Paid':
+            return 'primary';
+        case 'Overdue':
+        case 'Cancelled':
+            return 'error';
+        default:
+            return 'grey';
+    }
+};
+
+const getStatusLabel = (status) => {
+    if (status === 'Issued' || status === 'Draft') return 'Pending';
+    return status;
+};
 
 const loadInvoices = async ({ page, itemsPerPage: limit, search: searchQuery }) => {
     currentPage.value = page;
@@ -337,6 +486,7 @@ watch([search, statusFilter], () => {
 });
 
 const viewInvoice = (invoice) => {
+    if (!auth.canRecord('invoices', 'detail', invoice)) return;
     selectedInvoice.value = invoice;
     viewDialog.value = true;
 };
@@ -345,10 +495,19 @@ const openCreateDialog = () => {
     editableInvoice.value = null;
     invoiceDialog.value = true;
 };
+useCreateAction('invoices', openCreateDialog);
 
-const editInvoice = (invoice) => {
-    editableInvoice.value = invoice;
-    invoiceDialog.value = true;
+const editInvoice = async (invoice) => {
+    if (!canEditInvoice(invoice) || editingId.value != null) return;
+    editingId.value = invoice.id;
+    try {
+        const fullInvoice = await invoiceStore.fetchInvoiceById(invoice.id);
+        if (!canEditInvoice(fullInvoice)) throw new Error('This invoice can no longer be edited. Refresh the list.');
+        editableInvoice.value = fullInvoice;
+        viewDialog.value = false;
+        invoiceDialog.value = true;
+    } catch (error) { uiStore.showError(error.response?.data?.message || error.message || 'Unable to open invoice for editing.'); }
+    finally { editingId.value = null; }
 };
 
 const onInvoiceSaved = () => {
@@ -415,3 +574,65 @@ const formatDate = (dateString) => {
   return new Date(dateString).toLocaleDateString('en-GB');
 };
 </script>
+
+<style>
+/* ==========================================================
+   STRICT CLASSIC THEME — Invoices Page
+   Scoped under .v-theme--classic only
+   ========================================================== */
+
+:global(.v-theme--classic) .v-container {
+  background: #F8F9FE !important;
+}
+
+/* ── Stat Cards ── */
+:global(.v-theme--classic) .soft-card {
+  background: #FFFFFF !important;
+  border: 1px solid rgba(79, 66, 148, 0.12) !important;
+  box-shadow: 0 4px 20px -4px rgba(79, 66, 148, 0.08) !important;
+}
+
+/* ── Primary Buttons ── */
+:global(.v-theme--classic) .v-btn--variant-elevated,
+:global(.v-theme--classic) .v-btn--variant-flat {
+  background: #4F4294 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 14px -4px rgba(79, 66, 148, 0.40) !important;
+}
+:global(.v-theme--classic) .v-btn--variant-elevated:hover,
+:global(.v-theme--classic) .v-btn--variant-flat:hover {
+  background: #6554C0 !important;
+  transform: translateY(-1px) !important;
+}
+
+:global(.v-theme--classic) .v-btn--variant-outlined {
+  border-color: rgba(79, 66, 148, 0.30) !important;
+  color: #4F4294 !important;
+  background: #FFFFFF !important;
+}
+
+/* ── Data Table Header ── */
+:global(.v-theme--classic) .v-data-table .v-data-table-header__content {
+  color: #4F4294 !important;
+  font-weight: 700 !important;
+  font-size: 0.72rem !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+}
+
+/* ── Row Hover ── */
+:global(.v-theme--classic) .v-data-table .v-data-table__tr:hover td {
+  background: rgba(79, 66, 148, 0.04) !important;
+}
+
+/* ── Active Pagination Button ── */
+:global(.v-theme--classic) .v-pagination .v-btn--active {
+  background: #4F4294 !important;
+  color: #FFFFFF !important;
+}
+
+/* ── Focus Outline ── */
+:global(.v-theme--classic) .v-field--focused .v-field__outline {
+  border-color: #4F4294 !important;
+}
+</style>

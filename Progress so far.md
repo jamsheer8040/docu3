@@ -142,13 +142,13 @@ Since you already have MySQL running locally:
 2.  Install dependencies: `npm install`
 3.  Copy `.env.example` to a new file named `.env`.
 4.  Open `.env` and put your MySQL username and password there.
-5.  Run it: `npm run dev` (This starts the server on `http://localhost:5000`).
+5.  Run it: `npm run dev` (This starts the server on `http://127.0.0.2:5000`).
 
 ### 2. Frontend Setup
 1.  Open a NEW terminal in the `frontend` folder.
 2.  Install dependencies: `npm install`
-3.  Run it: `npm run dev` (This starts the website on `http://localhost:3000`).
-4.  Open your browser to `http://localhost:3000`.
+3.  Run it: `npm run dev` (This starts the website on `http://127.0.0.2:3000`).
+4.  Open your browser to `http://127.0.0.2:3000`.
 
 ---
 

@@ -12,6 +12,8 @@ const { requirePermission } = require('../middleware/auth.middleware');
 router.get('/', requirePermission('sales_orders', 'read'), salesOrderController.getAllSalesOrders);
 router.post('/', requirePermission('sales_orders', 'write'), salesOrderController.createSalesOrder);
 router.get('/:id', requirePermission('sales_orders', 'read'), salesOrderController.getSalesOrderById);
+router.put('/:id', requirePermission('sales_orders', 'write'), salesOrderController.updateSalesOrder);
+router.delete('/:id', requirePermission('sales_orders', 'write'), salesOrderController.deleteSalesOrder);
 
 // Push Service Item to Execution
 router.post('/items/:itemId/push', requirePermission('sales_orders', 'write'), salesOrderController.pushService);

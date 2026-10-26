@@ -1,67 +1,27 @@
 require('dotenv').config();
-const { sequelize, User, Role } = require('./models');
-const bcrypt = require('bcryptjs');
+const { sequelize, User, Role, Tenant } = require('./models');
 
 async function createAdmin() {
-  try {
-    console.log('[Setup] Creating Admin Credentials...');
-    await sequelize.authenticate();
-
-    // 1. Ensure Admin Role exists
-    const [adminRole] = await Role.findOrCreate({
-      where: { name: 'Admin' },
-      defaults: {
-        permissions: {
-          dashboard: { read: true, write: true, delete: true },
-          customers: { read: true, write: true, delete: true },
-          documents: { read: true, write: true, delete: true },
-          services: { read: true, write: true, delete: true },
-          invoices: { read: true, write: true, delete: true },
-          expenses: { read: true, write: true, delete: true },
-          wallet: { read: true, write: true, delete: true },
-          reports: { read: true, write: true, delete: true },
-          settings: { read: true, write: true, delete: true }
-        }
-      }
-    });
-    console.log(`[Setup] Admin Role ID: ${adminRole.id}`);
-
-    // 2. Create/Update Admin User
-    const email = 'admin@test.com';
-    const password = 'admin123';
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const [user, created] = await User.findOrCreate({
-      where: { email },
-      defaults: {
-        name: 'System Administrator',
-        password_hash: hashedPassword,
-        role_id: adminRole.id,
-        is_active: true
-      }
-    });
-
-    if (!created) {
-      await user.update({
-        password_hash: hashedPassword,
-        role_id: adminRole.id,
-        is_active: true
-      });
-      console.log(`[Setup] Existing admin user updated.`);
-    } else {
-      console.log(`[Setup] New admin user created.`);
-    }
-
-    console.log('---------------------------------------------');
-    console.log(`EMAIL:    ${email}`);
-    console.log(`PASSWORD: ${password}`);
-    console.log('---------------------------------------------');
-    console.log('[Setup] Admin ready. You can now login.');
-    process.exit(0);
-  } catch (err) {
-    console.error('[Setup] FAILED:', err);
-    process.exit(1);
+  const email = process.env.BOOTSTRAP_ADMIN_EMAIL;
+  const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+  const tenantId = Number(process.env.BOOTSTRAP_TENANT_ID);
+  if (!email || !password || password.length < 16 || !Number.isSafeInteger(tenantId) || tenantId <= 0) {
+    throw new Error('Supply BOOTSTRAP_ADMIN_EMAIL, BOOTSTRAP_ADMIN_PASSWORD (16+ characters), and BOOTSTRAP_TENANT_ID');
   }
+  await sequelize.transaction(async transaction => {
+    const tenant = await Tenant.findOne({ where: { id: tenantId }, transaction });
+    if (!tenant) throw new Error('Bootstrap organization does not exist');
+    const existing = await User.findOne({ where: { email }, transaction });
+    if (existing) throw new Error('Account already exists; use account management to change it');
+    const [role] = await Role.findOrCreate({ where: { name: 'Admin', tenant_id: tenantId }, transaction });
+    await User.create({ name: 'System Administrator', email, password_hash: password,
+      role_id: role.id, tenant_id: tenantId, is_active: true, can_login: true }, { transaction });
+  });
+  console.log('Administrator created. Credentials were not logged.');
 }
 
-createAdmin();
+if (require.main === module) {
+  createAdmin().catch(error => { console.error(error.message); process.exitCode = 1; })
+    .finally(() => sequelize.close());
+}
+module.exports = { createAdmin };

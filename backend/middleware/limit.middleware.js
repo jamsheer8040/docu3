@@ -1,18 +1,24 @@
+const { internalRead } = require('../utils/recordAccess');
 const { User, Customer, Document, WalletAccount } = require('../models');
 
 exports.checkUserLimit = async (req, res, next) => {
   if (!req.tenantId) return next();
+
+  // Non-login staff (drivers, field staff, etc.) do not consume login user seats
+  if (req.body.can_login === false || req.body.can_login === 'false') {
+    return next();
+  }
 
   const plan = req.user?.Tenant?.Plan;
   if (!plan) return next();
 
   if (plan.max_users !== null && plan.max_users > -1) {
     try {
-      const count = await User.count({ where: { tenant_id: req.tenantId } });
+      const count = await internalRead(() => User.count({ where: { tenant_id: req.tenantId, can_login: true } }));
       if (count >= plan.max_users) {
         return res.status(403).json({
           success: false,
-          message: `Plan limit reached. You can create a maximum of ${plan.max_users} users on your current plan. Please upgrade to add more.`
+          message: `Plan limit reached. You can create a maximum of ${plan.max_users} login users on your current plan. Non-login staff can still be added.`
         });
       }
     } catch (err) {
@@ -30,7 +36,7 @@ exports.checkCustomerLimit = async (req, res, next) => {
 
   if (plan.max_customers !== null && plan.max_customers > -1) {
     try {
-      const count = await Customer.count({ where: { tenant_id: req.tenantId } });
+      const count = await internalRead(() => Customer.count({ where: { tenant_id: req.tenantId } }));
       if (count >= plan.max_customers) {
         return res.status(403).json({
           success: false,
@@ -52,7 +58,7 @@ exports.checkDocumentLimit = async (req, res, next) => {
 
   if (plan.max_documents !== null && plan.max_documents > -1) {
     try {
-      const count = await Document.count({ where: { tenant_id: req.tenantId } });
+      const count = await internalRead(() => Document.count({ where: { tenant_id: req.tenantId } }));
       if (count >= plan.max_documents) {
         return res.status(403).json({
           success: false,
@@ -74,7 +80,7 @@ exports.checkWalletLimit = async (req, res, next) => {
 
   if (plan.max_wallet_accounts !== null && plan.max_wallet_accounts > -1) {
     try {
-      const count = await WalletAccount.count({ where: { tenant_id: req.tenantId } });
+      const count = await internalRead(() => WalletAccount.count({ where: { tenant_id: req.tenantId } }));
       if (count >= plan.max_wallet_accounts) {
         return res.status(403).json({
           success: false,

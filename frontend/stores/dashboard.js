@@ -4,6 +4,7 @@ export const useDashboardStore = defineStore('dashboard', {
   state: () => ({
     stats: {
       total_customers: 0,
+      total_suppliers: 0,
       active_customers: 0,
       active_documents: 0,
       expiring_soon: 0,
@@ -13,6 +14,7 @@ export const useDashboardStore = defineStore('dashboard', {
       monthly_cost: 0,
       monthly_profit: 0,
       active_service_orders: 0,
+      aged_invoices: 0,
       service_overview: {
         'Pending': 0,
         'In Progress': 0,
@@ -28,22 +30,25 @@ export const useDashboardStore = defineStore('dashboard', {
       recent_services: []
     },
     loading: false,
+    statsRequest: 0,
     error: null
   }),
 
   actions: {
-    async fetchStats() {
+    async fetchStats(params = {}) {
+      const request = ++this.statsRequest;
       this.loading = true;
+      this.error = null;
       try {
         const { $api } = useNuxtApp();
-        const response = await $api.get('/dashboard/stats');
-        if (response.data?.success) {
+        const response = await $api.get('/dashboard/stats', { params });
+        if (request === this.statsRequest && response.data?.success) {
           this.stats = response.data.data;
         }
       } catch (err) {
-        this.error = err.response?.data?.message || 'Failed to fetch dashboard statistics';
+        if (request === this.statsRequest) this.error = err.response?.data?.message || 'Failed to fetch dashboard statistics';
       } finally {
-        this.loading = false;
+        if (request === this.statsRequest) this.loading = false;
       }
     },
 

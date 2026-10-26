@@ -1,6 +1,8 @@
 const jwt = require('jsonwebtoken');
 const { User, Role, Customer, Tenant, Plan } = require('../models');
 const tenantContext = require('../utils/tenantContext');
+const recordContext = require('../utils/recordAccessContext');
+const { actionScope } = require('../utils/permissionRules');
 
 /**
  * Middleware to verify JWT token (Alias: protect)
@@ -21,7 +23,7 @@ exports.verifyToken = async (req, res, next) => {
 
     const user = await User.findByPk(decoded.id, {
       include: [
-        { model: Role, attributes: ['name', 'permissions', 'type'] },
+        { model: Role, attributes: ['name', 'permissions', 'type', 'dashboard_template_id'] },
         { model: Customer, as: 'LinkedCustomers', attributes: ['id', 'name'] },
         { 
           model: Tenant, 
@@ -31,7 +33,7 @@ exports.verifyToken = async (req, res, next) => {
       ]
     });
 
-    if (!user || !user.is_active) {
+    if (!user || !user.is_active || !user.can_login) {
       return res.status(401).json({
         success: false,
         message: 'Invalid or inactive user.'
@@ -67,10 +69,12 @@ exports.verifyToken = async (req, res, next) => {
     }
 
     req.user = user;
+    const json = res.json.bind(res);
+    res.json = body => json(require('../utils/recordAccess').sanitizeResponse(body));
 
     // Wrap subsequent execution in tenant context
     tenantContext.run(req.tenantId, () => {
-      next();
+      recordContext.run({ user }, () => next());
     });
   } catch (err) {
     return res.status(401).json({
@@ -128,34 +132,18 @@ exports.requirePermission = (moduleName, accessType = 'read') => {
       return res.status(403).json({ success: false, message: 'Access denied. No role assigned.' });
     }
 
-    // Developer Fail-safe: Always allow
-    if (req.user.Role.name === 'Developer') {
-        return next();
+    const path = req.route?.path || '';
+    const creates = req.method === 'POST' && !req.params.id &&
+      ['/', '/orders', '/cvs', '/accounts', '/shareholders', '/capital-transactions', '/dividends', '/bulk-import', '/book'].includes(path);
+    const action = req.method === 'DELETE' ? 'delete' : accessType === 'read' ? ((req.params.id || req.params.itemId) ? 'detail' : 'list') :
+      accessType === 'write' ? (creates ? 'create' : 'edit') : accessType;
+    const scope = actionScope(req.user, moduleName, action);
+    if (scope === true || (typeof scope === 'string' && scope !== 'none')) {
+      const state = recordContext.getStore();
+      if (state) { state.module = moduleName; state.action = action; }
+      return next();
     }
-
-    let { permissions } = req.user.Role;
-    
-    // Safety: Parse string permissions if Sequelize didn't automatically do it
-    if (typeof permissions === 'string') {
-        try {
-            permissions = JSON.parse(permissions);
-        } catch (e) {
-            console.error('Failed to parse role permissions:', e);
-            return res.status(500).json({ success: false, message: 'Error parsing role permissions.' });
-        }
-    }
-
-    if (permissions && permissions[moduleName] && permissions[moduleName][accessType]) {
-        return next();
-    }
-
-    console.log(`[Permission Denied] User: ${req.user.email}, Role: ${req.user.Role.name}, Module: ${moduleName}, Access: ${accessType}`);
-    console.log('Permissions Object:', JSON.stringify(permissions, null, 2));
-
-    return res.status(403).json({
-        success: false,
-        message: `Access denied. Insufficient permissions for ${moduleName}.${accessType}`
-    });
+    return res.status(403).json({ success: false, message: `Access denied. Insufficient permissions for ${moduleName}.${action}` });
   };
 };
 

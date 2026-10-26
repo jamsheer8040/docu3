@@ -33,6 +33,24 @@
       </template>
     </v-alert>
 
+    <!-- Access Restricted State -->
+    <v-card
+      v-else-if="!canViewStaff"
+      class="soft-card pa-8 text-center rounded-2xl mx-auto my-12"
+      max-width="560"
+    >
+      <v-avatar size="64" color="amber-lighten-5" class="mb-4">
+        <v-icon icon="mdi-shield-lock-outline" color="amber-darken-3" size="36"></v-icon>
+      </v-avatar>
+      <h2 class="text-h5 font-weight-bold text-slate-800 mb-2">Restricted Information</h2>
+      <p class="text-body-2 text-slate-600 mb-6">
+        Viewing staff compensation, salary details, and confidential employee documents is restricted to administrators and authorized roles with Staff & HR privileges.
+      </p>
+      <v-btn color="primary" rounded="lg" prepend-icon="mdi-arrow-left" to="/settings?tab=users">
+        Back to Staff Directory
+      </v-btn>
+    </v-card>
+
     <!-- Main Content -->
     <div v-else-if="staff">
       <!-- Header Section -->
@@ -71,11 +89,12 @@
               </v-chip>
               <v-chip
                 size="small"
-                variant="tonal"
-                color="primary"
+                :variant="staff.can_login !== false ? 'tonal' : 'outlined'"
+                :color="staff.can_login !== false ? 'primary' : 'blue-grey'"
                 class="font-weight-bold"
               >
-                {{ staff.Role?.name || 'Staff' }}
+                <v-icon start :icon="staff.can_login !== false ? 'mdi-shield-check' : 'mdi-shield-off-outline'" size="14"></v-icon>
+                {{ staff.can_login !== false ? (staff.Role?.name || 'Staff') : 'No System Login' }}
               </v-chip>
             </div>
             <p class="text-blue-grey-darken-1 text-subtitle-2 mt-1 mb-0 d-flex align-center gap-2">
@@ -90,6 +109,7 @@
 
         <div class="d-flex align-center gap-2">
           <v-btn
+            v-if="canEditStaff"
             color="white"
             variant="flat"
             class="font-weight-bold px-4 rounded-lg elevation-1"
@@ -99,6 +119,7 @@
             Edit Profile
           </v-btn>
           <v-btn
+            v-if="canEditStaff"
             color="primary"
             variant="flat"
             class="font-weight-bold px-4 rounded-lg elevation-2"
@@ -329,9 +350,19 @@
                     <span class="font-weight-bold text-slate-800">{{ formatCurrency(staff.other_allowances) }}</span>
                   </div>
 
-                  <div class="d-flex justify-space-between align-center mt-auto pt-2 bg-emerald-lighten-5 pa-3 rounded-lg flex-wrap gap-2" style="background: #ECFDF5;">
-                    <span class="text-subtitle-2 font-weight-bold text-emerald-900" style="color: #065F46;">Total Monthly Salary</span>
+                  <div class="d-flex justify-space-between align-center my-3 bg-emerald-lighten-5 pa-3 rounded-xl flex-wrap gap-2" style="background: #ECFDF5; border: 1px solid #A7F3D0;">
+                    <div>
+                      <span class="text-subtitle-2 font-weight-bold text-emerald-900 d-block" style="color: #065F46;">Total Monthly Salary</span>
+                      <span class="text-caption text-emerald-700 font-weight-medium" style="color: #047857;">Annual: {{ formatCurrency((parseFloat(staff.total_salary) || 0) * 12) }}</span>
+                    </div>
                     <span class="text-h6 font-weight-black text-emerald-700" style="color: #047857;">{{ formatCurrency(staff.total_salary) }}</span>
+                  </div>
+
+                  <div class="bg-slate-100 pa-2 rounded-lg mt-auto d-flex align-start gap-2">
+                    <v-icon icon="mdi-information-outline" size="16" color="blue-grey" class="mt-0.5"></v-icon>
+                    <span class="text-caption text-blue-grey-darken-2" style="font-size: 11px !important; line-height: 1.3;">
+                      UAE Labour Law: Gratuity & End-of-Service benefit (EOSG) is calculated on Basic Salary ({{ formatCurrency(staff.basic_salary) }}).
+                    </span>
                   </div>
                 </v-card>
               </v-col>
@@ -346,6 +377,7 @@
                 <p class="text-caption text-slate-500 mb-0">Keep track of Emirates IDs, Visas, Passports, and Labour cards</p>
               </div>
               <v-btn
+                v-if="canEditStaff"
                 color="primary"
                 variant="flat"
                 class="font-weight-bold rounded-lg"
@@ -441,6 +473,7 @@
               <template v-slot:item.actions="{ item }">
                 <div class="d-flex align-center justify-end gap-1">
                   <v-btn
+                    v-if="canEditStaff"
                     icon="mdi-pencil-outline"
                     variant="text"
                     size="small"
@@ -449,6 +482,7 @@
                     @click="openEditDocumentDialog(item)"
                   ></v-btn>
                   <v-btn
+                    v-if="canDeleteStaff"
                     icon="mdi-delete-outline"
                     variant="text"
                     size="small"
@@ -484,6 +518,32 @@
         </v-card-title>
         <v-card-text class="pt-4">
           <v-form ref="editFormRef" v-model="editFormValid">
+            <!-- Login Access Switch Card -->
+            <v-card variant="outlined" class="rounded-xl pa-3 mb-4 bg-slate-50 border" :color="editForm.can_login ? 'primary' : 'grey-lighten-1'">
+              <div class="d-flex align-center justify-space-between">
+                <div class="d-flex align-center">
+                  <v-avatar size="36" :color="editForm.can_login ? 'primary-lighten-5' : 'grey-lighten-3'" class="mr-3 rounded-lg">
+                    <v-icon :icon="editForm.can_login ? 'mdi-shield-key-outline' : 'mdi-shield-off-outline'" :color="editForm.can_login ? 'primary' : 'grey'"></v-icon>
+                  </v-avatar>
+                  <div>
+                    <div class="text-subtitle-2 font-weight-bold" :class="editForm.can_login ? 'text-primary' : 'text-grey-darken-2'">
+                      {{ editForm.can_login ? 'System & Portal Login Enabled' : 'No System Login (HR & Documents Only)' }}
+                    </div>
+                    <div class="text-caption text-grey">
+                      {{ editForm.can_login ? 'Staff can sign into the system with email and password' : 'Staff without login (drivers, helpers) only tracked for salary and documents' }}
+                    </div>
+                  </div>
+                </div>
+                <v-switch
+                  v-model="editForm.can_login"
+                  color="primary"
+                  hide-details
+                  inset
+                  density="compact"
+                ></v-switch>
+              </div>
+            </v-card>
+
             <h4 class="text-caption font-weight-bold text-slate-500 mb-3 text-uppercase">Basic Information</h4>
             <v-row dense>
               <v-col cols="12" md="6">
@@ -498,13 +558,13 @@
               <v-col cols="12" md="6">
                 <v-text-field
                   v-model="editForm.email"
-                  label="Email Address *"
+                  :label="editForm.can_login ? 'Email Address (Login Username) *' : 'Email Address (Optional)'"
                   variant="outlined"
                   density="comfortable"
-                  :rules="[v => !!v || 'Email is required']"
+                  :rules="editForm.can_login ? [v => !!v || 'Email is required for login', v => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) || 'Invalid email format'] : [v => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) || 'Invalid email format']"
                 ></v-text-field>
               </v-col>
-              <v-col cols="12" md="6">
+              <v-col cols="12" md="6" v-if="editForm.can_login">
                 <v-select
                   v-model="editForm.role_id"
                   :items="roles"
@@ -604,52 +664,54 @@
               </v-col>
             </v-row>
 
-            <v-divider class="my-4"></v-divider>
-            <h4 class="text-caption font-weight-bold text-slate-500 mb-3 text-uppercase">Salary Details</h4>
-            <v-row dense>
-              <v-col cols="12" sm="4">
-                <v-text-field
-                  v-model.number="editForm.basic_salary"
-                  label="Basic Salary (AED)"
-                  type="number"
-                  variant="outlined"
-                  density="comfortable"
-                  min="0"
-                  step="50"
-                  @update:model-value="recalcEditTotalSalary"
-                ></v-text-field>
-              </v-col>
-              <v-col cols="12" sm="4">
-                <v-text-field
-                  v-model.number="editForm.hr_allowance"
-                  label="Housing / HR (AED)"
-                  type="number"
-                  variant="outlined"
-                  density="comfortable"
-                  min="0"
-                  step="50"
-                  @update:model-value="recalcEditTotalSalary"
-                ></v-text-field>
-              </v-col>
-              <v-col cols="12" sm="4">
-                <v-text-field
-                  v-model.number="editForm.other_allowances"
-                  label="Other Allowances (AED)"
-                  type="number"
-                  variant="outlined"
-                  density="comfortable"
-                  min="0"
-                  step="50"
-                  @update:model-value="recalcEditTotalSalary"
-                ></v-text-field>
-              </v-col>
-              <v-col cols="12">
-                <div class="d-flex justify-space-between align-center bg-grey-lighten-4 pa-3 rounded-lg">
-                  <span class="text-subtitle-2 font-weight-bold text-slate-700">Total Monthly Salary</span>
-                  <span class="text-h6 font-weight-black text-primary">AED {{ (parseFloat(editForm.total_salary) || 0).toFixed(2) }}</span>
-                </div>
-              </v-col>
-            </v-row>
+            <template v-if="canEditStaff">
+              <v-divider class="my-4"></v-divider>
+              <h4 class="text-caption font-weight-bold text-slate-500 mb-3 text-uppercase">Salary Details</h4>
+              <v-row dense>
+                <v-col cols="12" sm="4">
+                  <v-text-field
+                    v-model.number="editForm.basic_salary"
+                    label="Basic Salary (AED)"
+                    type="number"
+                    variant="outlined"
+                    density="comfortable"
+                    min="0"
+                    step="50"
+                    @update:model-value="recalcEditTotalSalary"
+                  ></v-text-field>
+                </v-col>
+                <v-col cols="12" sm="4">
+                  <v-text-field
+                    v-model.number="editForm.hr_allowance"
+                    label="Housing / HR (AED)"
+                    type="number"
+                    variant="outlined"
+                    density="comfortable"
+                    min="0"
+                    step="50"
+                    @update:model-value="recalcEditTotalSalary"
+                  ></v-text-field>
+                </v-col>
+                <v-col cols="12" sm="4">
+                  <v-text-field
+                    v-model.number="editForm.other_allowances"
+                    label="Other Allowances (AED)"
+                    type="number"
+                    variant="outlined"
+                    density="comfortable"
+                    min="0"
+                    step="50"
+                    @update:model-value="recalcEditTotalSalary"
+                  ></v-text-field>
+                </v-col>
+                <v-col cols="12">
+                  <div class="d-flex justify-space-between align-center bg-grey-lighten-4 pa-3 rounded-lg">
+                    <span class="text-subtitle-2 font-weight-bold text-slate-700">Total Monthly Salary</span>
+                    <span class="text-h6 font-weight-black text-primary">AED {{ (parseFloat(editForm.total_salary) || 0).toFixed(2) }}</span>
+                  </div>
+                </v-col>
+              </v-row>
+            </template>
           </v-form>
         </v-card-text>
         <v-card-actions class="pb-4 px-6">
@@ -784,12 +846,18 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
 import { useCurrency } from '~/composables/useCurrency';
 
 const route = useRoute();
 const staffId = route.params.id;
 const { $api } = useNuxtApp();
 const { formatCurrency } = useCurrency();
+const auth = useAuthStore();
+
+const canViewStaff = computed(() => auth.isAdmin || auth.can('staff', 'read'));
+const canEditStaff = computed(() => auth.isAdmin || auth.can('staff', 'write'));
+const canDeleteStaff = computed(() => auth.isAdmin || auth.can('staff', 'delete'));
 
 // State
 const staff = ref(null);
@@ -814,6 +882,7 @@ const saving = ref(false);
 const editForm = reactive({
   name: '',
   email: '',
+  can_login: true,
   role_id: null,
   is_active: true,
   phone: '',
@@ -1016,6 +1085,7 @@ const openEditDialog = () => {
   Object.assign(editForm, {
     name: staff.value.name || '',
     email: staff.value.email || '',
+    can_login: staff.value.can_login !== undefined ? !!staff.value.can_login : true,
     role_id: staff.value.Role?.id || staff.value.role_id,
     is_active: !!staff.value.is_active,
     phone: staff.value.phone || '',

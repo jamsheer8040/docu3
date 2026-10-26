@@ -138,7 +138,7 @@ exports.createSalesOrder = async (req, res) => {
     } = req.body;
 
     // Generate SO Number
-    const count = await SalesOrder.count({ where: { tenant_id: req.user.tenant_id }, transaction });
+    const count = await require('../utils/recordAccess').internalRead(() => SalesOrder.count({ where: { tenant_id: req.user.tenant_id }, transaction }));
     const order_number = `SO-${new Date().getFullYear()}${(count + 1).toString().padStart(4, '0')}`;
 
     const salesOrder = await SalesOrder.create({
@@ -186,11 +186,17 @@ exports.createSalesOrder = async (req, res) => {
 exports.pushService = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
+    if (req.user.Role?.type === 'CustomerPortal') {
+      await transaction.rollback();
+      return res.status(403).json({ success: false, message: 'Only internal users can push services.' });
+    }
+    const { resolveAssignee, recordAssignment } = require('../utils/serviceAssignment');
+    const userId = await resolveAssignee(req.body?.assigned_user_id, req.user.tenant_id, transaction);
     const itemId = req.params.itemId;
     const item = await SalesOrderItem.findOne({
       where: { id: itemId, tenant_id: req.user.tenant_id },
-      include: [{ model: SalesOrder }],
-      transaction
+      include: [{ model: SalesOrder, required: true, where: { tenant_id: req.user.tenant_id } }],
+      transaction, lock: transaction.LOCK.UPDATE
     });
 
     if (!item) {
@@ -215,6 +221,7 @@ exports.pushService = async (req, res) => {
     }, { transaction });
 
     // Link back to item and update status
+    if (userId) await serviceOrder.update(await recordAssignment(serviceOrder, userId, req.user, 'SalesOrder', transaction), { transaction });
     await item.update({
       service_order_id: serviceOrder.id,
       status: 'Pending'
@@ -225,7 +232,119 @@ exports.pushService = async (req, res) => {
   } catch (error) {
     await transaction.rollback();
     console.error('[SalesOrderController] Error pushing service:', error);
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(error.status || 500).json({ success: false, message: error.status ? error.message : 'Server error' });
+  }
+};
+
+/**
+ * Update Sales Order
+ * Allows updating header info and adding more services.
+ * Existing items that were pushed to execution or confirmed are preserved and never reversed.
+ */
+exports.updateSalesOrder = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const {
+      customer_id,
+      contact_person,
+      sales_executive_id,
+      branch,
+      customer_reference,
+      internal_remarks,
+      items
+    } = req.body;
+
+    const salesOrder = await SalesOrder.findOne({
+      where: { id, tenant_id: req.user.tenant_id },
+      include: [SalesOrderItem],
+      transaction
+    });
+
+    if (!salesOrder) {
+      await transaction.rollback();
+      return res.status(404).json({ success: false, message: 'Sales Order not found' });
+    }
+
+    // Update header fields
+    if (customer_id) salesOrder.customer_id = customer_id;
+    if (contact_person !== undefined) salesOrder.contact_person = contact_person;
+    if (sales_executive_id !== undefined) salesOrder.sales_executive_id = sales_executive_id;
+    if (branch !== undefined) salesOrder.branch = branch;
+    if (customer_reference !== undefined) salesOrder.customer_reference = customer_reference;
+    if (internal_remarks !== undefined) salesOrder.internal_remarks = internal_remarks;
+
+    await salesOrder.save({ transaction });
+
+    // Handle service items
+    if (items && Array.isArray(items)) {
+      const existingItems = salesOrder.SalesOrderItems || [];
+      const existingItemIds = existingItems.map(i => Number(i.id));
+
+      const submittedItemIds = items
+        .filter(item => item.id)
+        .map(item => Number(item.id));
+
+      // Remove unpushed & unconfirmed items omitted from payload
+      for (const existingItem of existingItems) {
+        if (!submittedItemIds.includes(Number(existingItem.id))) {
+          if (existingItem.service_order_id || existingItem.confirmed) {
+            // Cannot delete actioned items, preserve them
+            continue;
+          } else {
+            await existingItem.destroy({ transaction });
+          }
+        }
+      }
+
+      // Process submitted items (edit existing or add new services)
+      for (const item of items) {
+        if (item.id && existingItemIds.includes(Number(item.id))) {
+          const dbItem = existingItems.find(i => Number(i.id) === Number(item.id));
+          if (dbItem) {
+            if (!dbItem.service_order_id) {
+              dbItem.service_type_id = item.service_type_id || dbItem.service_type_id;
+              dbItem.service_name = item.service_name || dbItem.service_name;
+              dbItem.description = item.description !== undefined ? item.description : dbItem.description;
+              dbItem.quantity = item.quantity || dbItem.quantity;
+              dbItem.cost = item.cost !== undefined ? item.cost : dbItem.cost;
+              dbItem.service_charge = item.service_charge !== undefined ? item.service_charge : dbItem.service_charge;
+              dbItem.estimated_price = item.estimated_price !== undefined ? item.estimated_price : dbItem.estimated_price;
+              dbItem.expected_processing_time = item.expected_processing_time !== undefined ? item.expected_processing_time : dbItem.expected_processing_time;
+              dbItem.priority = item.priority || dbItem.priority;
+              await dbItem.save({ transaction });
+            } else {
+              if (item.description !== undefined) dbItem.description = item.description;
+              if (item.priority) dbItem.priority = item.priority;
+              await dbItem.save({ transaction });
+            }
+          }
+        } else {
+          // New service item added to this sales order!
+          await SalesOrderItem.create({
+            sales_order_id: salesOrder.id,
+            service_type_id: item.service_type_id,
+            service_name: item.service_name,
+            description: item.description || null,
+            quantity: item.quantity || 1,
+            cost: item.cost || 0.00,
+            service_charge: item.service_charge || 0.00,
+            estimated_price: item.estimated_price || 0.00,
+            expected_processing_time: item.expected_processing_time || item.expected_date || null,
+            priority: item.priority || 'Normal',
+            status: 'Not Started',
+            tenant_id: req.user.tenant_id
+          }, { transaction });
+        }
+      }
+    }
+
+    await transaction.commit();
+    res.json({ success: true, message: 'Sales Order updated successfully', data: salesOrder });
+  } catch (error) {
+    await transaction.rollback();
+    console.error('[SalesOrderController] Error updating sales order:', error);
+    res.status(500).json({ success: false, message: 'Server error updating sales order', error: error.message });
   }
 };
 

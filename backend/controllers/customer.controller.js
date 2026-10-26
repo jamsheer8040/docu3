@@ -36,6 +36,7 @@ exports.getCustomers = async (req, res) => {
       limit: parseInt(limit),
       offset: parseInt(offset),
       order: [['name', 'ASC']]
+      ,include: [{ model: require('../models').User, as: 'AssignedSalesStaff', attributes: ['id', 'name'], required: false }]
     });
 
     res.json({
@@ -60,6 +61,7 @@ exports.getCustomerById = async (req, res) => {
     const customer = await Customer.findOne({
       where: { id: req.params.id, tenant_id: req.user.tenant_id },
       include: [
+        { model: require('../models').User, as: 'AssignedSalesStaff', attributes: ['id', 'name'], required: false },
         { 
           model: Document, 
           limit: 20, 
@@ -103,11 +105,13 @@ exports.createCustomer = async (req, res) => {
   }
 
   try {
-    const data = { ...req.body, tenant_id: req.user.tenant_id };
+    const { id, created_by, ...input } = req.body;
+    const data = { ...input, tenant_id: req.user.tenant_id };
+    data.assigned_user_id = await require('../utils/customerSalesperson').customerSalesperson(input.assigned_user_id, req.user);
     const customer = await Customer.create(data);
     res.status(201).json({ success: true, data: customer });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Error creating customer.' });
+    res.status(err.status || 500).json({ success: false, message: err.status ? err.message : 'Error creating customer.' });
   }
 };
 
@@ -126,10 +130,11 @@ exports.updateCustomer = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Customer not found.' });
     }
     const { tenant_id, id, ...updateData } = req.body;
+    if (Object.hasOwn(updateData, 'assigned_user_id')) updateData.assigned_user_id = await require('../utils/customerSalesperson').customerSalesperson(updateData.assigned_user_id, req.user);
     await customer.update(updateData);
     res.json({ success: true, data: customer });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Error updating customer.' });
+    res.status(err.status || 500).json({ success: false, message: err.status ? err.message : 'Error updating customer.' });
   }
 };
 
@@ -226,8 +231,12 @@ exports.importBulkCustomers = async (req, res) => {
       invalidRows.push({ row: i + 1, reason: 'Name and WhatsApp Phone are required' });
       continue;
     }
+    let salesperson;
+    try { salesperson = await require('../utils/customerSalesperson').customerSalesperson(cust.assigned_user_id, req.user); }
+    catch (error) { invalidRows.push({ row: i + 1, reason: error.message }); continue; }
     // ensure optional fields are not undefined (set to null or string)
     validCustomers.push({
+      assigned_user_id: salesperson,
       name: cust.name,
       email: cust.email || null,
       phone_whatsapp: cust.phone_whatsapp,

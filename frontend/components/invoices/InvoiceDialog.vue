@@ -10,6 +10,7 @@
     </v-card-title>
 
     <v-card-text>
+      <v-alert v-if="isIssuedEdit" type="info" variant="tonal" density="compact" class="mb-4">Billing details can be edited. Existing costs, quantities, funding sources and service links stay locked.</v-alert>
       <v-form ref="form" v-model="valid">
         <v-row>
           <!-- Service Order Selection -->
@@ -20,7 +21,8 @@
               :items="filteredServiceOrders"
               multiple
               chips
-              closable-chips
+              :closable-chips="!isIssuedEdit"
+              :readonly="isIssuedEdit"
               :item-title="item => `#${String(item.id).padStart(5, '0')} - ${item.Customer?.name} - ${item.ServiceType?.name} (${item.status})`"
               item-value="id"
               placeholder="Search active assigned service"
@@ -76,6 +78,7 @@
           <div class="text-subtitle-1 font-weight-bold">Invoice Items (Internal View)</div>
           <v-spacer></v-spacer>
           <v-btn
+            v-if="!isIssuedEdit"
             prepend-icon="mdi-plus"
             variant="tonal"
             color="primary"
@@ -93,9 +96,9 @@
               
               <!-- Read-only text field for items generated from a Service Order -->
               <v-text-field
-                v-if="item.service_order_id"
+                v-if="item.service_order_id || isIssuedEdit"
                 v-model="item.description"
-                readonly
+                :readonly="!!item.service_order_id"
                 hide-details="auto"
                 class="soft-input bg-grey-lighten-4"
                 variant="outlined"
@@ -124,6 +127,7 @@
               <label class="text-caption font-weight-bold text-slate-700 mb-1 ml-1 d-block">Qty</label>
               <v-text-field
                 v-model.number="item.quantity"
+                :readonly="isIssuedEdit"
                 type="number"
                 min="1"
                 hide-details="auto"
@@ -138,6 +142,7 @@
               <label class="text-caption font-weight-bold text-slate-700 mb-1 ml-1 d-block">Cost (Govt Fee)</label>
               <v-text-field
                 v-model.number="item.cost_price"
+                :readonly="isIssuedEdit"
                 type="number"
                 min="0"
                 hide-details="auto"
@@ -171,7 +176,7 @@
             </v-col>
             <v-col cols="12" md="1" class="text-right">
               <v-btn
-                v-if="!item.service_order_id && state.items.length > 1"
+                v-if="!isIssuedEdit && !item.service_order_id && state.items.length > 1"
                 icon="mdi-minus-circle-outline"
                 variant="text"
                 color="error"
@@ -209,7 +214,23 @@
                 bg-color="transparent"
                 :disabled="item.cost_price <= 0"
                 :rules="item.cost_price > 0 && item.cost_type === 'Wallet' ? [v => !!v || 'Required'] : []"
-              ></v-autocomplete>
+              >
+                <template v-slot:selection="{ item }">
+                  <div class="d-flex align-center">
+                    <v-avatar size="20" class="mr-2" v-if="item.raw.logo_url" rounded="0"><v-img :src="item.raw.logo_url"></v-img></v-avatar>
+                    <v-avatar size="20" class="mr-2 bg-primary" v-else><v-icon size="x-small" icon="mdi-bank"></v-icon></v-avatar>
+                    <span>{{ item.raw.name }}</span>
+                  </div>
+                </template>
+                <template v-slot:item="{ props, item }">
+                  <v-list-item v-bind="props" :title="item.raw.name">
+                    <template v-slot:prepend>
+                      <v-avatar size="24" class="mr-3" v-if="item.raw.logo_url" rounded="0"><v-img :src="item.raw.logo_url"></v-img></v-avatar>
+                      <v-avatar size="24" class="mr-3 bg-primary" v-else><v-icon size="x-small" icon="mdi-bank"></v-icon></v-avatar>
+                    </template>
+                  </v-list-item>
+                </template>
+              </v-autocomplete>
 
               <v-autocomplete
                 v-if="item.cost_type === 'Supplier'"
@@ -322,11 +343,12 @@
         size="large"
         class="px-6 font-weight-bold"
         :loading="invoiceStore.loading"
-        @click="save('Draft')"
+        @click="save(isEdit ? props.invoice.status : 'Draft')"
       >
-        Save as Draft
+        {{ isEdit ? 'Save changes' : 'Save as Draft' }}
       </v-btn>
       <v-btn
+        v-if="!isIssuedEdit"
         class="btn-standard px-8 ml-2"
         size="large"
         :loading="invoiceStore.loading"
@@ -379,6 +401,7 @@ const valid = ref(false);
 const form = ref(null);
 
 const isEdit = !!props.invoice;
+const isIssuedEdit = computed(() => isEdit && ['Issued', 'Overdue'].includes(props.invoice.status));
 
 const getEmptyItem = () => ({ 
   service_order_id: null,
@@ -469,8 +492,9 @@ const fetchData = async () => {
   loadingServiceOrders.value = true;
   $api.get('/services/orders', { params: { limit: 1000 } }).then(r => {
     if (r.data?.success) {
+      const linked = new Set((props.invoice?.InvoiceItems || []).map(item => String(item.service_order_id)));
       let filtered = r.data.data.filter(
-        o => o.status === 'Pending' || o.status === 'In Progress' || o.status === 'CompletedInvoicePending'
+        o => linked.has(String(o.id)) || o.status === 'Pending' || o.status === 'In Progress' || o.status === 'CompletedInvoicePending'
       );
       if (props.prefilledCustomerId) {
         filtered = filtered.filter(o => o.customer_id === parseInt(props.prefilledCustomerId));
@@ -499,7 +523,10 @@ const fetchData = async () => {
 
   // Fetch Taxes
   $api.get('/taxes').then(r => {
-    if (r.data?.success && r.data.data.length > 0) taxes.value = r.data.data.map(t => ({ name: t.name, rate: parseFloat(t.rate) }));
+    if (r.data?.success && r.data.data.length > 0) {
+      const activeTaxes = r.data.data.filter(t => t.is_active);
+      taxes.value = activeTaxes.map(t => ({ name: t.name, rate: parseFloat(t.rate) }));
+    }
   });
 };
 
@@ -509,7 +536,7 @@ onMounted(() => {
   if (isEdit) {
       Object.assign(state, {
           customer_id: props.invoice.customer_id,
-          service_order_ids: [], // We don't fully support editing multi-service yet via dropdown, but handled on backend.
+          service_order_ids: [...new Set(props.invoice.InvoiceItems.map(i => i.service_order_id).filter(Boolean))],
           due_date: props.invoice.due_date,
           notes: props.invoice.notes || '',
           discount: parseFloat(props.invoice.discount) || 0,
@@ -517,6 +544,8 @@ onMounted(() => {
           items: props.invoice.InvoiceItems.map(i => {
               const qty = parseFloat(i.quantity);
               return {
+                  id: i.id,
+                  service_order_id: i.service_order_id || null,
                   selectedItem: i.description,
                   description: i.description,
                   quantity: qty,
@@ -648,6 +677,7 @@ const calculateRow = (index) => {
 };
 
 const showWalletSelection = (item) => {
+    if (isIssuedEdit.value) return false;
     // Manual items always show wallet dropdown if they have a cost
     if (!item.service_order_id) return true;
     
@@ -668,13 +698,14 @@ const save = async (status) => {
     try {
         let targetStatus = status;
         // Always save as Draft first to let backend properly trigger the 'Issued' deduction hook
-        if (status === 'Issued') {
+        if (status === 'Issued' && !isIssuedEdit.value) {
             state.status = 'Draft';
         } else {
             state.status = status;
         }
         
         state.items.forEach(item => {
+          if (isIssuedEdit.value) return;
           if (item.selectedItem && typeof item.selectedItem === 'object') {
             item.description = item.selectedItem.name;
           } else if (item.selectedItem && typeof item.selectedItem === 'string') {
@@ -690,13 +721,13 @@ const save = async (status) => {
         }
 
         // If target was Issued, now trigger the status transition
-        if (targetStatus === 'Issued' && res && res.data) {
+        if (targetStatus === 'Issued' && !isIssuedEdit.value && res && res.data) {
             await invoiceStore.updateStatus(res.data.id, 'Issued');
         }
 
         emit('save');
     } catch (err) {
-        uiStore.showError(err.message || 'Operation failed');
+        uiStore.showError(err.response?.data?.message || err.message || 'Operation failed');
     }
 };
 </script>

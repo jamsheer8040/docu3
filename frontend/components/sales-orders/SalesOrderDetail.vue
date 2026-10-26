@@ -1,23 +1,26 @@
 <template>
   <v-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" width="97vw" max-width="1900px" height="97vh" scrollable>
     <v-card class="rounded-xl glass-card" v-if="order">
-      <v-card-title class="pa-6 border-b d-flex align-center justify-space-between bg-surface">
+      <v-card-title class="pa-6 border-b d-flex align-center justify-space-between bg-surface flex-wrap ga-3">
         <div>
           <span class="text-h5 font-weight-black text-primary mr-3">{{ order.order_number }}</span>
           <v-chip size="small" color="secondary" variant="flat" class="font-weight-bold">{{ formatDate(order.order_date) }}</v-chip>
         </div>
-        <div>
+        <div class="d-flex align-center flex-wrap ga-2">
           <v-btn
+            v-if="canEdit"
             color="primary"
-            prepend-icon="mdi-download"
-            class="mr-4 text-none font-weight-bold btn-3d"
+            variant="outlined"
+            prepend-icon="mdi-pencil"
+            class="mr-3 text-none font-weight-bold"
             rounded="xl"
-            @click="downloadProforma"
-            :loading="downloading"
+            @click="$emit('edit', order)"
             size="small"
           >
-            Proforma Invoice
+            Edit Order
           </v-btn>
+          <DocumentExport remember size="small" :record-id="order.id" :types="['proforma']" label="Download Pro Forma Invoice" />
+          <DocumentExport remember size="small" :record-id="order.id" :types="['sales_order']" label="Download Sales Order" />
           <v-btn icon="mdi-close" variant="text" size="small" @click="$emit('update:modelValue', false)"></v-btn>
         </div>
 
@@ -102,7 +105,7 @@
               </td>
               <td class="text-end" style="min-width: 200px;">
                 <template v-if="!item.service_order_id">
-                  <template v-if="!item.confirmed && !item.cancelled">
+                  <template v-if="!item.confirmed && !item.cancelled && canEdit">
                     <v-btn
                       color="success"
                       size="small"
@@ -127,13 +130,14 @@
                   </template>
                   <v-btn
                     v-else
+                    :disabled="!canEdit || !auth.can('services', 'create')"
                     color="primary"
                     size="small"
                     variant="flat"
                     rounded="lg"
                     class="font-weight-bold text-none"
                     prepend-icon="mdi-send"
-                    @click="pushService(item)"
+                    @click="openPushService(item)"
                     :loading="pushing === item.id"
                   >
                     Push to Service
@@ -177,25 +181,125 @@
                   <v-icon v-if="event.isNote" size="12" class="mr-1">mdi-note-text-outline</v-icon>
                   {{ event.subtitle }}
                 </div>
-                <div v-if="event.list && event.list.length" class="mt-3 pl-3" style="border-left: 2px solid rgba(var(--v-theme-primary), 0.15); margin-left: 10px;">
-                  <div v-for="(listItem, j) in event.list" :key="j" class="text-caption text-secondary d-flex align-center pb-3 position-relative" style="left: -11.5px;">
-                    <div class="bg-surface rounded-circle d-flex justify-center align-center mr-2" style="width: 21px; height: 21px; border: 2px solid rgb(var(--v-theme-surface)); box-shadow: 0 0 0 1px white;">
-                      <v-icon size="18" :color="listItem.done ? 'success' : 'grey-lighten-2'">
-                        {{ listItem.done ? 'mdi-check-circle' : 'mdi-circle-outline' }}
-                      </v-icon>
+                <!-- Dedicated Workflow Branch Topology Section -->
+                <div v-if="event.list && event.list.length" class="branch-topology-box mt-3 pa-3 rounded-xl">
+                  <!-- Branch Section Header -->
+                  <div class="branch-header d-flex align-center justify-space-between mb-2">
+                    <div class="d-flex align-center gap-1">
+                      <v-icon size="15" color="primary">mdi-source-branch</v-icon>
+                      <span class="branch-header-title text-caption font-weight-bold text-uppercase">
+                        Workflow Branch
+                      </span>
                     </div>
-                    <span class="text-truncate" :class="{ 'font-weight-bold text-blue-grey-darken-3': listItem.done }">{{ listItem.label }}</span>
-                    <v-btn
-                      v-if="listItem.attachment"
-                      icon="mdi-paperclip"
-                      size="20"
-                      variant="text"
-                      color="primary"
-                      class="ml-1"
-                      @click="openAttachmentViewer(listItem.attachment)"
-                      title="View Attachment"
-                    ></v-btn>
-                    <span v-if="listItem.date" class="ml-auto ml-2 opacity-70">{{ listItem.date }}</span>
+                    <v-chip
+                      size="x-small"
+                      :color="getBranchStatusColor(event.list)"
+                      variant="tonal"
+                      class="font-weight-bold px-2"
+                      style="height: 20px; font-size: 10px;"
+                    >
+                      {{ getBranchStatusLabel(event.list) }}
+                    </v-chip>
+                  </div>
+
+                  <!-- Branch Topology Tree -->
+                  <div class="branch-tree">
+                    <div
+                      v-for="(listItem, j) in event.list"
+                      :key="j"
+                      class="branch-row d-flex align-center"
+                      :class="{
+                        'is-done': listItem.done,
+                        'is-active': listItem.active,
+                        'is-last': j === event.list.length - 1
+                      }"
+                    >
+                      <!-- Branch Connector Rails -->
+                      <div class="branch-rails">
+                        <!-- Top trunk segment + curved elbow branching into node -->
+                        <div
+                          class="rail-fork"
+                          :class="{
+                            'rail-done': listItem.done,
+                            'rail-active': listItem.active
+                          }"
+                        ></div>
+                        <!-- Bottom trunk segment connecting to next step (stops on last item) -->
+                        <div
+                          v-if="j < event.list.length - 1"
+                          class="rail-bottom"
+                          :class="{
+                            'rail-done': event.list[j + 1]?.done,
+                            'rail-active': event.list[j + 1]?.active
+                          }"
+                        ></div>
+                      </div>
+
+                      <!-- Branch Node Marker -->
+                      <div
+                        class="branch-node-dot d-flex align-center justify-center flex-shrink-0"
+                        :class="{
+                          'dot-done': listItem.done,
+                          'dot-active': listItem.active,
+                          'dot-pending': !listItem.done && !listItem.active
+                        }"
+                      >
+                        <v-icon v-if="listItem.done" size="12" color="white">mdi-check</v-icon>
+                        <div v-else-if="listItem.active" class="active-pulse-center"></div>
+                        <div v-else class="pending-center-dot"></div>
+                      </div>
+
+                      <!-- Node Details -->
+                      <div class="branch-node-content d-flex align-center justify-space-between flex-grow-1 min-width-0 pl-2">
+                        <div class="d-flex align-center gap-1 text-truncate">
+                          <span
+                            class="node-label text-truncate"
+                            :class="{
+                              'label-done': listItem.done,
+                              'label-active': listItem.active,
+                              'label-pending': !listItem.done && !listItem.active
+                            }"
+                          >
+                            {{ listItem.label }}
+                          </span>
+                          <v-chip
+                            v-if="listItem.active"
+                            size="x-small"
+                            color="primary"
+                            variant="flat"
+                            class="font-weight-black px-1 ml-1"
+                            style="height: 16px; font-size: 8px; letter-spacing: 0.05em;"
+                          >
+                            ACTIVE
+                          </v-chip>
+                        </div>
+
+                        <div class="d-flex align-center gap-1 flex-shrink-0 ml-2">
+                          <v-btn
+                            v-if="listItem.attachment"
+                            size="x-small"
+                            variant="tonal"
+                            color="primary"
+                            rounded="pill"
+                            prepend-icon="mdi-paperclip"
+                            class="font-weight-bold text-none px-2"
+                            style="height: 20px; font-size: 10px;"
+                            @click.stop="openAttachmentViewer(listItem.attachment)"
+                            title="View Attachment"
+                          >
+                            Doc
+                          </v-btn>
+
+                          <span
+                            v-if="listItem.date"
+                            class="text-caption font-weight-medium text-secondary"
+                            style="font-size: 10px;"
+                          >
+                            {{ listItem.date }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div v-if="event.date" class="text-caption text-primary font-weight-black mt-2">
@@ -292,6 +396,17 @@
       </v-card-text>
     </v-card>
   </v-dialog>
+  <v-dialog v-model="pushDialog" max-width="480" :persistent="!!pushing">
+    <v-card rounded="xl">
+      <v-card-title>Push to Service</v-card-title>
+      <v-card-text>
+        <p class="mb-4">Push {{ pushItem?.service_name }} to Services?</p>
+        <StaffAssignmentSelect v-model="pushAssignee" :disabled="!!pushing" />
+        <p class="text-caption text-medium-emphasis mt-2">Staff selection is optional.</p>
+      </v-card-text>
+      <v-card-actions class="pa-4"><v-spacer /><v-btn :disabled="!!pushing" @click="pushDialog = false">Cancel</v-btn><v-btn color="primary" variant="tonal" :loading="!!pushing" @click="pushService">Push to Service</v-btn></v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup>
@@ -299,20 +414,28 @@ import { ref, computed } from 'vue'
 import { useNuxtApp } from '#app'
 import { useRouter } from 'vue-router'
 import { useUIStore } from '~/stores/ui'
+import { useAuthStore } from '~/stores/auth'
 import InvoiceDetailView from '~/components/invoices/InvoiceDetailView.vue'
+import StaffAssignmentSelect from '~/components/services/StaffAssignmentSelect.vue'
 
 const uiStore = useUIStore()
+const auth = useAuthStore()
 
 const props = defineProps({
   modelValue: Boolean,
   order: Object
 })
+const canEdit = computed(() => props.order && auth.canRecord('sales_orders', 'edit', props.order))
 
-const emit = defineEmits(['update:modelValue', 'refresh'])
+const emit = defineEmits(['update:modelValue', 'refresh', 'edit'])
 const { $api } = useNuxtApp()
 const router = useRouter()
 
 const pushing = ref(null)
+const pushDialog = ref(false)
+const pushItem = ref(null)
+const pushAssignee = ref(null)
+const openPushService = item => { pushItem.value = item; pushAssignee.value = null; pushDialog.value = true }
 const downloading = ref(false)
 const invoiceDetailVisible = ref(false)
 const selectedInvoiceId = ref(null)
@@ -481,6 +604,7 @@ const lifecycleEvents = computed(() => {
     list.push({
       label: 'Confirmed',
       done: isConfirmed,
+      active: !isConfirmed,
       date: isConfirmed ? formatDate(item.updatedAt || item.updated_at) : null,
       attachment: item.confirm_attachment ? (useRuntimeConfig().public.apiBase.replace('/api/v1', '') + item.confirm_attachment) : null
     })
@@ -489,6 +613,7 @@ const lifecycleEvents = computed(() => {
     list.push({
       label: 'Initiated',
       done: isInitiated,
+      active: isConfirmed && !isInitiated,
       date: isInitiated ? formatDate(item.started_at || item.updatedAt || item.updated_at) : null
     })
 
@@ -496,6 +621,7 @@ const lifecycleEvents = computed(() => {
     list.push({
       label: 'Completed',
       done: isCompleted,
+      active: isInitiated && !isCompleted,
       date: isCompleted ? formatDate(item.completed_at || item.updatedAt || item.updated_at) : null
     })
 
@@ -554,12 +680,13 @@ const getStatusLabel = (status) => {
   return map[status] || status || 'Not Started'
 }
 
-const pushService = async (item) => {
-  if (!confirm(`Are you sure you want to dispatch "${item.service_name}" to the execution team?`)) return
-  
+const pushService = async () => {
+  const item = pushItem.value
+  if (!item || pushing.value) return
   pushing.value = item.id
   try {
-    const res = await $api.post(`/sales-orders/items/${item.id}/push`)
+    const res = await $api.post(`/sales-orders/items/${item.id}/push`, { assigned_user_id: pushAssignee.value || null })
+    pushDialog.value = false
     uiStore.showSuccess(res.data.message)
     emit('refresh') // Refreshes parent to get updated order info
     
@@ -580,6 +707,22 @@ const viewService = (serviceOrderId) => {
   // For now we just route to /services. The user can find it.
   router.push(`/services?search=SRV-${String(serviceOrderId).padStart(5, '0')}`)
 }
+
+const getBranchStatusColor = (list) => {
+  if (!list || !list.length) return 'grey'
+  const doneCount = list.filter(i => i.done).length
+  if (doneCount === list.length) return 'success'
+  if (doneCount > 0) return 'primary'
+  return 'warning'
+}
+
+const getBranchStatusLabel = (list) => {
+  if (!list || !list.length) return 'Pending'
+  const doneCount = list.filter(i => i.done).length
+  if (doneCount === list.length) return 'Completed'
+  if (doneCount > 0) return `${doneCount}/${list.length} In Progress`
+  return 'Pending'
+}
 </script>
 
 <style scoped>
@@ -593,11 +736,151 @@ const viewService = (serviceOrderId) => {
     max-width: 20%;
   }
 }
-</style>
 
-<style scoped>
 .glass-card {
   background: rgba(255, 255, 255, 0.95) !important;
   backdrop-filter: blur(20px);
+}
+
+/* ── Workflow Branch Topology ── */
+.branch-topology-box {
+  background: #F8F9FE;
+  border: 1px solid rgba(79, 66, 148, 0.12);
+  box-shadow: 0 2px 10px -2px rgba(79, 66, 148, 0.06);
+}
+
+.branch-header-title {
+  color: #4F4294;
+  letter-spacing: 0.05em;
+  font-size: 11px;
+}
+
+.branch-tree {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.branch-row {
+  position: relative;
+  min-height: 36px;
+  padding: 3px 0;
+}
+
+/* Branch Topology Connector Rails */
+.branch-rails {
+  position: relative;
+  width: 22px;
+  height: 100%;
+  min-height: 36px;
+  flex-shrink: 0;
+}
+
+/* Curved fork branching from vertical line into node */
+.rail-fork {
+  position: absolute;
+  top: 0;
+  left: 7px;
+  width: 15px;
+  height: 50%;
+  border-left: 2px solid #CBD5E1;
+  border-bottom: 2px solid #CBD5E1;
+  border-bottom-left-radius: 7px;
+  box-sizing: border-box;
+}
+
+.rail-fork.rail-done {
+  border-left-color: #10B981 !important;
+  border-bottom-color: #10B981 !important;
+}
+
+.rail-fork.rail-active {
+  border-left-color: #4F4294 !important;
+  border-bottom-color: #4F4294 !important;
+}
+
+/* Bottom vertical trunk continuing to next row */
+.rail-bottom {
+  position: absolute;
+  top: 50%;
+  bottom: 0;
+  left: 7px;
+  width: 2px;
+  background: #CBD5E1;
+}
+
+.rail-bottom.rail-done {
+  background: #10B981 !important;
+}
+
+.rail-bottom.rail-active {
+  background: #4F4294 !important;
+}
+
+/* Branch Node Markers */
+.branch-node-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  z-index: 2;
+  transition: all 0.25s ease;
+}
+
+.dot-done {
+  background: #10B981;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.35);
+}
+
+.dot-active {
+  background: #FFFFFF;
+  border: 2px solid #4F4294;
+  box-shadow: 0 0 0 3px rgba(79, 66, 148, 0.18);
+}
+
+.dot-pending {
+  background: #FFFFFF;
+  border: 2px solid #CBD5E1;
+}
+
+.active-pulse-center {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4F4294;
+  animation: pulse-dot 1.8s infinite;
+}
+
+@keyframes pulse-dot {
+  0% { transform: scale(0.9); opacity: 0.8; }
+  50% { transform: scale(1.25); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.8; }
+}
+
+.pending-center-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #CBD5E1;
+}
+
+/* Node Labels */
+.node-label {
+  font-size: 12px;
+  transition: color 0.2s ease;
+}
+
+.label-done {
+  color: #1E293B !important;
+  font-weight: 700 !important;
+}
+
+.label-active {
+  color: #4F4294 !important;
+  font-weight: 800 !important;
+}
+
+.label-pending {
+  color: #94A3B8 !important;
+  font-weight: 500 !important;
 }
 </style>

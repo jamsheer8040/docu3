@@ -31,6 +31,16 @@ exports.upload = multer({
   }
 });
 
+const hasStaffPermission = (reqUser, action = 'read') => {
+  if (!reqUser || !reqUser.Role) return false;
+  if (reqUser.Role.name === 'Admin' || reqUser.Role.name === 'Developer') return true;
+  let perms = reqUser.Role.permissions;
+  if (typeof perms === 'string') {
+    try { perms = JSON.parse(perms); } catch (e) { perms = {}; }
+  }
+  return !!(perms && perms.staff && perms.staff[action]);
+};
+
 exports.getUsers = async (req, res) => {
   try {
     const where = { tenant_id: req.user.tenant_id };
@@ -38,18 +48,29 @@ exports.getUsers = async (req, res) => {
       where['$Role.name$'] = { [require('sequelize').Op.ne]: 'Developer' };
     }
 
+    const canViewStaff = hasStaffPermission(req.user, 'read');
+    const excludeAttrs = ['password_hash'];
+    if (!canViewStaff) {
+      excludeAttrs.push('basic_salary', 'hr_allowance', 'other_allowances', 'total_salary');
+    }
+
+    const includes = [
+      { model: Role, attributes: ['name', 'permissions', 'type'] },
+      { model: Customer, as: 'LinkedCustomers', attributes: ['id', 'name'] }
+    ];
+
+    if (canViewStaff) {
+      includes.push({
+        model: StaffDocument,
+        as: 'StaffDocuments',
+        attributes: ['id', 'expiry_date', 'document_type_id']
+      });
+    }
+
     const users = await User.findAll({
       where,
-      attributes: { exclude: ['password_hash'] },
-      include: [
-        { model: Role, attributes: ['name', 'permissions', 'type'] },
-        { model: Customer, as: 'LinkedCustomers', attributes: ['id', 'name'] },
-        {
-          model: StaffDocument,
-          as: 'StaffDocuments',
-          attributes: ['id', 'expiry_date', 'document_type_id']
-        }
-      ],
+      attributes: { exclude: excludeAttrs },
+      include: includes,
       order: [['name', 'ASC']]
     });
     res.json({ success: true, data: users });
@@ -61,28 +82,44 @@ exports.getUsers = async (req, res) => {
 
 exports.getUserById = async (req, res) => {
   try {
+    const canViewStaff = hasStaffPermission(req.user, 'read');
+
+    const includes = [
+      { model: Role, attributes: ['id', 'name', 'permissions', 'type'] },
+      { model: Customer, as: 'LinkedCustomers', attributes: ['id', 'name'] }
+    ];
+
+    if (canViewStaff) {
+      includes.push({
+        model: StaffDocument,
+        as: 'StaffDocuments',
+        include: [{ model: DocumentType, as: 'DocumentType', attributes: ['id', 'name', 'category'] }]
+      });
+    }
+
     const user = await User.findOne({
       where: { id: req.params.id, tenant_id: req.user.tenant_id },
       attributes: { exclude: ['password_hash'] },
-      include: [
-        { model: Role, attributes: ['id', 'name', 'permissions', 'type'] },
-        { model: Customer, as: 'LinkedCustomers', attributes: ['id', 'name'] },
-        {
-          model: StaffDocument,
-          as: 'StaffDocuments',
-          include: [{ model: DocumentType, as: 'DocumentType', attributes: ['id', 'name', 'category'] }]
-        }
-      ],
-      order: [
+      include: includes,
+      order: canViewStaff ? [
         [{ model: StaffDocument, as: 'StaffDocuments' }, 'expiry_date', 'ASC']
-      ]
+      ] : undefined
     });
 
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
 
-    res.json({ success: true, data: user });
+    const userData = user.toJSON();
+    if (!canViewStaff) {
+      userData.basic_salary = 0;
+      userData.hr_allowance = 0;
+      userData.other_allowances = 0;
+      userData.total_salary = 0;
+      userData.StaffDocuments = [];
+    }
+
+    res.json({ success: true, data: userData });
   } catch (err) {
     console.error('[User Controller] getUserById error:', err);
     res.status(500).json({ success: false, message: 'Error fetching user details.' });
@@ -97,23 +134,36 @@ exports.createUser = async (req, res) => {
 
   try {
     const {
-      name, email, password, role_id, customer_ids,
+      name, email, password, role_id, customer_ids, can_login,
       phone, address, home_country_address, home_country_contact, home_country_alternate_contact,
       designation, joining_date, basic_salary, hr_allowance, other_allowances, total_salary
     } = req.body;
 
-    const basic = parseFloat(basic_salary) || 0;
-    const hr = parseFloat(hr_allowance) || 0;
-    const other = parseFloat(other_allowances) || 0;
-    const computedTotal = (total_salary !== undefined && total_salary !== null && total_salary !== '')
-      ? parseFloat(total_salary)
-      : (basic + hr + other);
+    const canLoginBool = can_login !== undefined ? (can_login === true || can_login === 'true') : true;
+
+    if (canLoginBool && (!email || !password)) {
+      return res.status(400).json({ success: false, message: 'Email and password are required for accounts with system login access.' });
+    }
+
+    const cleanEmail = (email && typeof email === 'string' && email.trim()) ? email.trim() : null;
+    const cleanPassword = canLoginBool ? password : null;
+
+    const canEditStaff = hasStaffPermission(req.user, 'write');
+    const basic = canEditStaff ? (parseFloat(basic_salary) || 0) : 0;
+    const hr = canEditStaff ? (parseFloat(hr_allowance) || 0) : 0;
+    const other = canEditStaff ? (parseFloat(other_allowances) || 0) : 0;
+    const computedTotal = canEditStaff 
+      ? ((total_salary !== undefined && total_salary !== null && total_salary !== '')
+          ? parseFloat(total_salary)
+          : (basic + hr + other))
+      : 0;
 
     const user = await User.create({
       name,
-      email,
-      password_hash: password, // hooks hash it
-      role_id,
+      email: cleanEmail,
+      password_hash: cleanPassword, // hooks hash it if provided
+      can_login: canLoginBool,
+      role_id: canLoginBool ? role_id : (role_id || null),
       phone: phone || null,
       address: address || null,
       home_country_address: home_country_address || null,
@@ -132,20 +182,30 @@ exports.createUser = async (req, res) => {
       await user.setLinkedCustomers(customer_ids);
     }
 
+    const canViewStaff = hasStaffPermission(req.user, 'read');
     const populated = await User.findByPk(user.id, {
       attributes: { exclude: ['password_hash'] },
       include: [
         { model: Role, attributes: ['name', 'permissions', 'type'] },
         { model: Customer, as: 'LinkedCustomers', attributes: ['id', 'name'] },
-        {
+        ...(canViewStaff ? [{
           model: StaffDocument,
           as: 'StaffDocuments',
           include: [{ model: DocumentType, as: 'DocumentType', attributes: ['id', 'name', 'category'] }]
-        }
+        }] : [])
       ]
     });
 
-    res.status(201).json({ success: true, data: populated });
+    const populatedData = populated.toJSON();
+    if (!canViewStaff) {
+      populatedData.basic_salary = 0;
+      populatedData.hr_allowance = 0;
+      populatedData.other_allowances = 0;
+      populatedData.total_salary = 0;
+      populatedData.StaffDocuments = [];
+    }
+
+    res.status(201).json({ success: true, data: populatedData });
   } catch (err) {
     if (err.name === 'SequelizeUniqueConstraintError') {
       return res.status(400).json({ success: false, message: 'Email already in use.' });
@@ -163,16 +223,17 @@ exports.updateUser = async (req, res) => {
     }
 
     const {
-      name, email, password, role_id, customer_ids, is_active,
+      name, email, password, role_id, customer_ids, is_active, can_login,
       phone, address, home_country_address, home_country_contact, home_country_alternate_contact,
       designation, joining_date, basic_salary, hr_allowance, other_allowances, total_salary
     } = req.body;
 
     const updateData = {};
     if (name !== undefined) updateData.name = name;
-    if (email !== undefined) updateData.email = email;
+    if (email !== undefined) updateData.email = (email && typeof email === 'string' && email.trim()) ? email.trim() : null;
     if (role_id !== undefined) updateData.role_id = role_id;
     if (is_active !== undefined) updateData.is_active = is_active;
+    if (can_login !== undefined) updateData.can_login = (can_login === true || can_login === 'true');
     if (password) updateData.password_hash = password;
 
     if (phone !== undefined) updateData.phone = phone;
@@ -183,7 +244,8 @@ exports.updateUser = async (req, res) => {
     if (designation !== undefined) updateData.designation = designation;
     if (joining_date !== undefined) updateData.joining_date = joining_date || null;
 
-    if (basic_salary !== undefined || hr_allowance !== undefined || other_allowances !== undefined || total_salary !== undefined) {
+    const canEditStaff = hasStaffPermission(req.user, 'write');
+    if (canEditStaff && (basic_salary !== undefined || hr_allowance !== undefined || other_allowances !== undefined || total_salary !== undefined)) {
       const basic = basic_salary !== undefined ? parseFloat(basic_salary) || 0 : parseFloat(user.basic_salary) || 0;
       const hr = hr_allowance !== undefined ? parseFloat(hr_allowance) || 0 : parseFloat(user.hr_allowance) || 0;
       const other = other_allowances !== undefined ? parseFloat(other_allowances) || 0 : parseFloat(user.other_allowances) || 0;
@@ -204,20 +266,30 @@ exports.updateUser = async (req, res) => {
       await user.setLinkedCustomers([]);
     }
     
+    const canViewStaff = hasStaffPermission(req.user, 'read');
     const populated = await User.findByPk(user.id, {
       attributes: { exclude: ['password_hash'] },
       include: [
         { model: Role, attributes: ['name', 'permissions', 'type'] },
         { model: Customer, as: 'LinkedCustomers', attributes: ['id', 'name'] },
-        {
+        ...(canViewStaff ? [{
           model: StaffDocument,
           as: 'StaffDocuments',
           include: [{ model: DocumentType, as: 'DocumentType', attributes: ['id', 'name', 'category'] }]
-        }
+        }] : [])
       ]
     });
 
-    res.json({ success: true, data: populated });
+    const populatedData = populated.toJSON();
+    if (!canViewStaff) {
+      populatedData.basic_salary = 0;
+      populatedData.hr_allowance = 0;
+      populatedData.other_allowances = 0;
+      populatedData.total_salary = 0;
+      populatedData.StaffDocuments = [];
+    }
+
+    res.json({ success: true, data: populatedData });
   } catch (err) {
     console.error('[User Controller] updateUser error:', err);
     res.status(500).json({ success: false, message: 'Error updating user.' });

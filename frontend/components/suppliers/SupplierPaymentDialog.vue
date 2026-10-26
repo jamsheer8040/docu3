@@ -17,7 +17,23 @@
             :loading="loadingWallets"
             :disabled="loadingWallets"
             :rules="[v => !!v || 'Wallet is required']"
-          ></v-select>
+          >
+            <template v-slot:selection="{ item }">
+              <div class="d-flex align-center">
+                <v-avatar size="20" class="mr-2" v-if="item.raw.logo_url" rounded="0"><v-img :src="item.raw.logo_url"></v-img></v-avatar>
+                <v-avatar size="20" class="mr-2 bg-primary" v-else><v-icon size="x-small" icon="mdi-bank"></v-icon></v-avatar>
+                <span>{{ item.raw.name }}</span>
+              </div>
+            </template>
+            <template v-slot:item="{ props, item }">
+              <v-list-item v-bind="props" :title="item.raw.name">
+                <template v-slot:prepend>
+                  <v-avatar size="24" class="mr-3" v-if="item.raw.logo_url" rounded="0"><v-img :src="item.raw.logo_url"></v-img></v-avatar>
+                  <v-avatar size="24" class="mr-3 bg-primary" v-else><v-icon size="x-small" icon="mdi-bank"></v-icon></v-avatar>
+                </template>
+              </v-list-item>
+            </template>
+          </v-select>
 
           <v-text-field
             v-model.number="paymentData.amount"

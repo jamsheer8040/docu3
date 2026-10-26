@@ -2,6 +2,14 @@ const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
 const { User, Role, Customer, Tenant, Plan, WalletAccount, SystemConfig, sequelize } = require('../models');
 
+const setFileAccessCookie = (res, token) => res.cookie('fileAccessToken', token, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'strict',
+  path: '/',
+  maxAge: 15 * 60 * 1000
+});
+
 /**
  * Handle user login
  */
@@ -27,7 +35,13 @@ exports.login = async (req, res) => {
       ]
     });
     
-    if (!user || !(await user.validatePassword(password))) {
+    if (!user || user.can_login === false || !(await user.validatePassword(password))) {
+      if (user && user.can_login === false) {
+        return res.status(403).json({
+          success: false,
+          message: 'This staff account does not have login access.'
+        });
+      }
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password.'
@@ -49,6 +63,7 @@ exports.login = async (req, res) => {
     );
 
     // Set Refresh Token in HttpOnly cookie
+    setFileAccessCookie(res, token);
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -165,7 +180,7 @@ exports.refresh = async (req, res) => {
       ]
     });
 
-    if (!user || !user.is_active) {
+    if (!user || !user.is_active || !user.can_login) {
       return res.status(401).json({ success: false, message: 'Invalid or inactive user' });
     }
 
@@ -175,6 +190,7 @@ exports.refresh = async (req, res) => {
       { expiresIn: '15m' }
     );
 
+    setFileAccessCookie(res, token);
     res.json({
       success: true,
       data: {
@@ -203,6 +219,7 @@ exports.refresh = async (req, res) => {
  */
 exports.logout = async (req, res) => {
   res.clearCookie('refreshToken');
+  res.clearCookie('fileAccessToken', { path: '/' });
   res.json({ success: true, message: 'Logged out successfully' });
 };
 

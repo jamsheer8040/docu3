@@ -1,0 +1,18 @@
+const router = require('express').Router();
+const controller = require('../controllers/commission.controller');
+router.use(require('../middleware/auth.middleware').protect);
+router.use(require('../utils/commissionFeature').requireEnabled);
+router.get('/options', controller.requireAccess('view'), controller.options);
+router.get('/criteria', controller.requireAccess('manage'), controller.criteria);
+router.put('/criteria', controller.requireAccess('manage'), controller.saveCriteria);
+router.post('/entries/:id/review', controller.requireAccess('approve'), controller.review);
+router.get('/invoices/:id', controller.requireAccess('view'), require('../middleware/auth.middleware').requirePermission('invoices', 'read'), controller.invoiceCommission);
+router.put('/invoices/:id', controller.requireAccess('manage'), require('../middleware/auth.middleware').requirePermission('invoices', 'read'), controller.saveInvoiceCommission);
+router.get('/statement', controller.requireAccess('view'), controller.statement);
+router.get('/rules', controller.requireAccess('manage'), controller.rules);
+router.post('/rules', controller.requireAccess('manage'), controller.saveRule);
+router.put('/rules/:id', controller.requireAccess('manage'), controller.saveRule);
+router.post('/calculate-existing', controller.requireAccess('manage'), controller.calculateExisting);
+router.post('/entries/:id/pay', controller.requireAccess('pay'), controller.pay);
+router.post('/payments/:id/reverse', controller.requireAccess('pay'), controller.reverse);
+module.exports = router;

@@ -3,23 +3,27 @@ services:
     image: mysql:8.0
     container_name: docclear_db
     restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
-      MYSQL_DATABASE: docclear_db
-      MYSQL_ROOT_PASSWORD: DocClear#2026!ProdDbPass
-      MYSQL_USER: docuser
-      MYSQL_PASSWORD: DocClear#2026!ProdDbPass
+      MYSQL_DATABASE: ${DB_NAME:-docclear_db}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-D0cnMan@g36}
+      MYSQL_USER: ${DB_USER:-docuser}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-D0cnMan@g36}
     ports:
       - "127.0.0.1:3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 5s
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p'$${MYSQL_ROOT_PASSWORD}' || exit 1"]
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: docclear_backend
     restart: unless-stopped
     depends_on:
@@ -31,23 +35,28 @@ services:
       - backend_uploads:/app/uploads
       - backend_backups:/app/backups
     environment:
+      HOST: 0.0.0.0
       PORT: 5000
       NODE_ENV: production
       DB_HOST: db
       DB_PORT: 3306
-      DB_NAME: docclear_db
+      DB_NAME: ${DB_NAME:-docclear_db}
       DB_USER: root
-      DB_PASS: DocClear#2026!ProdDbPass
-      JWT_SECRET: docclear_production_jwt_secret_key_change_me
+      DB_PASS: ${DB_PASSWORD:-D0cnMan@g36}
+      JWT_SECRET: ${JWT_SECRET:-docclear_production_jwt_secret_key_change_me_folderex}
       JWT_EXPIRES_IN: 24h
-      FRONTEND_URL: https://folderex.online
+      FRONTEND_URL: ${FRONTEND_URL:-https://folderex.online,https://www.folderex.online,http://folderex.online}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@folderex.online}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-Admin@Folderex2026}
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     container_name: docclear_frontend
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:80"
+      - "${FRONTEND_PORT:-127.0.0.1:3000}:80"
     depends_on:
       - backend
 

@@ -61,8 +61,35 @@ async function initializeDatabase() {
     await require('./utils/serviceAssignmentSchema')(sequelize);
     console.log('[System] Synced successfully with all associations.');
     
+    // Ensure default Plan and Tenant exist before referencing tenant_id: 1
+    const { Plan, Tenant, Role, User } = require('./models');
+    const [defaultPlan] = await Plan.findOrCreate({
+      where: { id: 1 },
+      defaults: {
+        name: 'Standard Plan',
+        price_monthly: 0,
+        price_yearly: 0,
+        max_users: 10,
+        max_customers: 500,
+        max_documents: 1000,
+        max_wallet_accounts: 5,
+        features: ['documents', 'customers', 'invoices', 'services', 'reports'],
+        is_active: true
+      }
+    });
+
+    await Tenant.findOrCreate({
+      where: { id: 1 },
+      defaults: {
+        name: 'Default Workspace',
+        slug: 'default',
+        plan_id: defaultPlan.id,
+        status: 'active',
+        billing_cycle: 'yearly'
+      }
+    });
+
     // Sync Admin Role (Force all permissions ON at every startup)
-    const { Role } = require('./models');
     const fullPermissions = {
       dashboard: { read: true, write: true, delete: true },
       customers: { read: true, write: true, delete: true },
@@ -123,8 +150,27 @@ async function initializeDatabase() {
     });
     await developerRole.update({ permissions: fullPermissions });
 
-    const { User } = require('./models');
     await require('./utils/bootstrap-accounts').retireDefaultAccounts(User);
+
+    // Bootstrap initial Administrator account if supplied via environment
+    if (process.env.BOOTSTRAP_ADMIN_EMAIL && process.env.BOOTSTRAP_ADMIN_PASSWORD) {
+      const bEmail = process.env.BOOTSTRAP_ADMIN_EMAIL.trim();
+      const bPass = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+      const bTenantId = Number(process.env.BOOTSTRAP_TENANT_ID || 1);
+      const existingAdmin = await User.findOne({ where: { email: bEmail } });
+      if (!existingAdmin && bPass.length >= 8) {
+        await User.create({
+          name: 'System Administrator',
+          email: bEmail,
+          password_hash: bPass,
+          role_id: adminRole.id,
+          tenant_id: bTenantId,
+          is_active: true,
+          can_login: true
+        });
+        console.log(`[System] Initial Administrator (${bEmail}) bootstrapped successfully.`);
+      }
+    }
 
     // Seed Default System Config
     const { SystemConfig } = require('./models');
@@ -375,7 +421,7 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-const HOST = process.env.HOST || '127.0.0.2';
+const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.2');
 async function start() {
  await initializeDatabase();
  await require('./utils/commissionFeature').initializeActivations();

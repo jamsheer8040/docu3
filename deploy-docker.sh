@@ -31,11 +31,14 @@ if [ ! -f .env ]; then
     cp .env.example .env
 fi
 
+# Remove any conflicting containers from previous runs
+echo "🧹 Removing any conflicting containers..."
+docker rm -f docclear_db docclear_backend docclear_frontend 2>/dev/null || true
+
 # Build and start containers
-echo "🔨 Building and launching containers..."
+echo "🔨 Launching containers..."
 $DOCKER_COMPOSE down --remove-orphans || true
-$DOCKER_COMPOSE build --no-cache
-$DOCKER_COMPOSE up -d
+$DOCKER_COMPOSE up -d --build
 
 echo "⏳ Waiting for database and backend initialization..."
 sleep 15

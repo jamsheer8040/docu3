@@ -6,8 +6,6 @@ services:
     environment:
       MYSQL_DATABASE: ${DB_NAME:-docclear_db}
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-D0cnMan@g36}
-      MYSQL_USER: ${DB_USER:-docuser}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-D0cnMan@g36}
     ports:
       - "127.0.0.1:3306:3306"
     volumes:

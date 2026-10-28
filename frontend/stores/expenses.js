@@ -6,6 +6,7 @@ export const useExpenseStore = defineStore('expenses', {
     loading: false,
     error: null,
     totalSpent: 0,
+    totalPaid: 0,
     totalItems: 0
   }),
 
@@ -18,6 +19,7 @@ export const useExpenseStore = defineStore('expenses', {
         if (response.data?.success) {
           this.expenses = response.data.data;
           this.totalSpent = response.data.meta?.total_sum || 0;
+          this.totalPaid = response.data.meta?.total_paid_sum || 0;
           this.totalItems = response.data.meta?.total || 0;
         }
       } catch (err) {

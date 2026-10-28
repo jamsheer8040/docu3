@@ -3,6 +3,7 @@ const { validationResult } = require('express-validator');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const staffSalary=require('../utils/staffSalary');
 
 // Multer Storage Config for Avatars
 const avatarStorage = multer.diskStorage({
@@ -149,14 +150,7 @@ exports.createUser = async (req, res) => {
     const cleanPassword = canLoginBool ? password : null;
 
     const canEditStaff = hasStaffPermission(req.user, 'write');
-    const basic = canEditStaff ? (parseFloat(basic_salary) || 0) : 0;
-    const hr = canEditStaff ? (parseFloat(hr_allowance) || 0) : 0;
-    const other = canEditStaff ? (parseFloat(other_allowances) || 0) : 0;
-    const computedTotal = canEditStaff 
-      ? ((total_salary !== undefined && total_salary !== null && total_salary !== '')
-          ? parseFloat(total_salary)
-          : (basic + hr + other))
-      : 0;
+    const salary=staffSalary(canEditStaff?{basic_salary,hr_allowance,other_allowances,total_salary}:{});
 
     const user = await User.create({
       name,
@@ -171,10 +165,7 @@ exports.createUser = async (req, res) => {
       home_country_alternate_contact: home_country_alternate_contact || null,
       designation: designation || null,
       joining_date: joining_date || null,
-      basic_salary: basic,
-      hr_allowance: hr,
-      other_allowances: other,
-      total_salary: computedTotal,
+      ...salary,
       tenant_id: req.user.tenant_id
     });
 
@@ -211,7 +202,7 @@ exports.createUser = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email already in use.' });
     }
     console.error('[User Controller] createUser error:', err);
-    res.status(500).json({ success: false, message: 'Error creating user.' });
+    res.status(err.status||500).json({ success: false, message: err.status===400?err.message:'Error creating user.' });
   }
 };
 
@@ -245,18 +236,7 @@ exports.updateUser = async (req, res) => {
     if (joining_date !== undefined) updateData.joining_date = joining_date || null;
 
     const canEditStaff = hasStaffPermission(req.user, 'write');
-    if (canEditStaff && (basic_salary !== undefined || hr_allowance !== undefined || other_allowances !== undefined || total_salary !== undefined)) {
-      const basic = basic_salary !== undefined ? parseFloat(basic_salary) || 0 : parseFloat(user.basic_salary) || 0;
-      const hr = hr_allowance !== undefined ? parseFloat(hr_allowance) || 0 : parseFloat(user.hr_allowance) || 0;
-      const other = other_allowances !== undefined ? parseFloat(other_allowances) || 0 : parseFloat(user.other_allowances) || 0;
-      
-      updateData.basic_salary = basic;
-      updateData.hr_allowance = hr;
-      updateData.other_allowances = other;
-      updateData.total_salary = (total_salary !== undefined && total_salary !== null && total_salary !== '')
-        ? parseFloat(total_salary)
-        : (basic + hr + other);
-    }
+    if(canEditStaff)Object.assign(updateData,staffSalary({basic_salary,hr_allowance,other_allowances,total_salary},user));
 
     await user.update(updateData);
     
@@ -292,7 +272,7 @@ exports.updateUser = async (req, res) => {
     res.json({ success: true, data: populatedData });
   } catch (err) {
     console.error('[User Controller] updateUser error:', err);
-    res.status(500).json({ success: false, message: 'Error updating user.' });
+    res.status(err.status||500).json({ success: false, message: err.status===400?err.message:'Error updating user.' });
   }
 };
 

@@ -950,6 +950,9 @@
                   <v-col cols="12" sm="4" v-if="auth.isAdmin || auth.can('staff', 'read')">
                     <v-text-field
                       v-model.number="currentUser.basic_salary"
+                      :rules="auth.isAdmin || auth.can('staff','write') ? [salaryAmountRule] : []"
+                      min="0" step="0.01"
+                      @update:model-value="recalcUserSalary"
                       label="Basic Salary (AED)"
                       type="number"
                       variant="outlined"
@@ -960,6 +963,9 @@
                   <v-col cols="12" sm="4" v-if="auth.isAdmin || auth.can('staff', 'read')">
                     <v-text-field
                       v-model.number="currentUser.hr_allowance"
+                      :rules="auth.isAdmin || auth.can('staff','write') ? [salaryAmountRule] : []"
+                      min="0" step="0.01"
+                      @update:model-value="recalcUserSalary"
                       label="Housing/HR (AED)"
                       type="number"
                       variant="outlined"
@@ -970,6 +976,9 @@
                   <v-col cols="12" sm="4" v-if="auth.isAdmin || auth.can('staff', 'read')">
                     <v-text-field
                       v-model.number="currentUser.other_allowances"
+                      :rules="auth.isAdmin || auth.can('staff','write') ? [salaryAmountRule] : []"
+                      min="0" step="0.01"
+                      @update:model-value="recalcUserSalary"
                       label="Other Allow. (AED)"
                       type="number"
                       variant="outlined"
@@ -979,8 +988,8 @@
                   </v-col>
                   <v-col cols="12" v-if="auth.isAdmin || auth.can('staff', 'read')">
                     <div class="d-flex justify-space-between align-center bg-grey-lighten-4 pa-3 rounded-lg">
-                      <span class="text-caption font-weight-bold text-slate-700">Calculated Total Monthly Salary</span>
-                      <span class="text-subtitle-1 font-weight-black text-primary">AED {{ ((parseFloat(currentUser.basic_salary)||0) + (parseFloat(currentUser.hr_allowance)||0) + (parseFloat(currentUser.other_allowances)||0)).toFixed(2) }}</span>
+                      <span class="text-caption font-weight-bold text-slate-700">Total Monthly Salary</span>
+                      <span class="text-subtitle-1 font-weight-black text-primary">AED {{ currentUser.total_salary == null ? '—' : Number(currentUser.total_salary).toFixed(2) }}</span>
                     </div>
                   </v-col>
                 </v-row>
@@ -1147,6 +1156,7 @@ import DashboardTemplateChoice from '~/components/settings/DashboardTemplateChoi
 import RoleDashboardAssignment from '~/components/settings/RoleDashboardAssignment.vue';
 import { businessModules, rulesFor as permissionRulesFor } from '~/utils/recordPermissions';
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue';
+import {salaryAmountRule,salaryComponentsTotal} from '~/utils/salaryCalculation.mjs';
 import { useAuthStore } from '@/stores/auth';
 import { useServiceStore } from '@/stores/services';
 import { useConfigStore } from '@/stores/config';
@@ -1564,12 +1574,16 @@ const openUserForm = (user = null) => {
     userDialog.value = true;
 };
 
+const userSalaryTouched=ref(false);
+function recalcUserSalary(){userSalaryTouched.value=true;try{currentUser.value.total_salary=salaryComponentsTotal(currentUser.value);}catch{currentUser.value.total_salary=null;}}
+watch(userDialog,open=>{if(open)userSalaryTouched.value=false;});
 const saveUser = async () => {
     const { valid } = await userForm.value.validate();
     if (!valid) return;
 
     savingUser.value = true;
     try {
+        if((auth.isAdmin||auth.can('staff','write'))&&(!edittingUser.value||userSalaryTouched.value))currentUser.value.total_salary=salaryComponentsTotal(currentUser.value);
         let userId = currentUser.value.id;
 
         if (edittingUser.value) {
@@ -1593,7 +1607,7 @@ const saveUser = async () => {
         userDialog.value = false;
         initSettings();
     } catch (err) {
-        showNotify(err.response?.data?.message || 'Error saving account.', 'error');
+        showNotify(err.response?.data?.message || err.message || 'Error saving account.', 'error');
     } finally {
         savingUser.value = false;
     }

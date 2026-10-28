@@ -2,6 +2,14 @@ const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
 const SalesOrder = sequelize.define('SalesOrder', {
+  source_quotation_id:{type:DataTypes.INTEGER,allowNull:true},lead_id:{type:DataTypes.INTEGER,allowNull:true},recipient_snapshot:{type:DataTypes.JSON,allowNull:true},
+  confirmation_status:{type:DataTypes.ENUM('Unconfirmed','Confirmed','Cancelled'),allowNull:false,defaultValue:'Confirmed'},
+  notes:{type:DataTypes.TEXT,allowNull:true},template_style:{type:DataTypes.STRING(20),allowNull:true},document_footer:{type:DataTypes.TEXT,allowNull:true},
+  discount: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 },
+  tax_rate: { type: DataTypes.DECIMAL(5, 2), allowNull: true, defaultValue: null },
+  bank_details: { type: DataTypes.JSON, allowNull: true, defaultValue: null },
+  payment_terms: { type: DataTypes.TEXT, allowNull: true, defaultValue: null },
+  terms: { type: DataTypes.TEXT, allowNull: true, defaultValue: null },
   id: {
     type: DataTypes.BIGINT,
     primaryKey: true,
@@ -18,7 +26,7 @@ const SalesOrder = sequelize.define('SalesOrder', {
   },
   customer_id: {
     type: DataTypes.INTEGER,
-    allowNull: false
+    allowNull: true
   },
   contact_person: {
     type: DataTypes.STRING(150),
@@ -33,7 +41,7 @@ const SalesOrder = sequelize.define('SalesOrder', {
     allowNull: true
   },
   customer_reference: {
-    type: DataTypes.STRING(100),
+    type: DataTypes.STRING(150),
     allowNull: true
   },
   internal_remarks: {

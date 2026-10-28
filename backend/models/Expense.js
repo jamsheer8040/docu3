@@ -50,6 +50,8 @@ const Expense = sequelize.define('Expense', {
     type: DataTypes.TEXT,
     allowNull: true
   },
+  // Retained even if an unpaid payroll is unbooked, to protect its reversal history.
+  salary_payroll_id: { type: DataTypes.BIGINT, allowNull: true, defaultValue: null },
   tenant_id: {
     type: DataTypes.INTEGER,
     allowNull: false,

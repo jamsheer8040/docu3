@@ -28,3 +28,10 @@ export function canAccess(user, module, action = 'read', record) {
   const assigned = record.assigned_user_id != null && String(record.assigned_user_id) === String(user?.id);
   return value === 'created' ? created : value === 'assigned' ? assigned : created || assigned;
 }
+export function canAccessSalary(user, action = 'read', record) {
+  if (!user || user.role_type === 'CustomerPortal') return false;
+  if (['admin','developer'].includes(user.role?.toLowerCase())) return true;
+  const rules = rulesFor(permissionFor(user, 'staff'));
+  if (!['created','assigned','own','all'].includes(rules.list) || !['created','assigned','own','all'].includes(rules.detail)) return false;
+  return action === 'read' || canAccess(user, 'staff', action, record);
+}

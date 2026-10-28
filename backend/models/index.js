@@ -538,6 +538,9 @@ require('../utils/recordAccess').install(db);
 for (const hook of ['beforeFindAfterExpandIncludeAll','beforeCount']) db.Expense.addHook(hook, options => require('../utils/commissionFeature').scopeExpenses(options));
 db.DashboardTemplate = require('./DashboardTemplate');
 for (const hook of ['beforeUpdate', 'beforeDestroy']) db.Expense.addHook(hook, async (expense, options) => {
+  if ((expense.salary_payroll_id || expense.previous('salary_payroll_id')) && !options.salaryAccounting) {
+    const error = new Error('Manage this salary expense through Salary payroll.'); error.status = 409; throw error;
+  }
   if (options.commissionReversal) return;
   const approval = await db.CommissionEntry.findOne({where:{tenant_id:expense.tenant_id,approval_expense_id:expense.id},transaction:options.transaction});
   if (approval) { const error=new Error('Manage this approved expense through Commissions.');error.status=409;throw error; }

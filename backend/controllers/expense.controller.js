@@ -5,66 +5,13 @@ const ExpenseSubType = require('../models/ExpenseSubType');
 const ExpenseType = require('../models/ExpenseType');
 const sequelize = require('../config/database');
 const { Op } = require('sequelize');
-
-/**
- * List expenses with filters
- */
+/** List operational expenses and individual posted salary views. */
 exports.listExpenses = async (req, res) => {
   try {
-    let { status, category, date_from, date_to, search, page = 1, limit = 10 } = req.query;
-    limit = Math.min(parseInt(limit), 100);
-    const offset = (page - 1) * limit;
-
-    const whereClause = { tenant_id: req.user.tenant_id };
-
-    if (status) whereClause.status = status;
-    if (req.query.expense_sub_type_id) whereClause.expense_sub_type_id = req.query.expense_sub_type_id;
-    
-    if (date_from || date_to) {
-      whereClause.created_at = {};
-      if (date_from) whereClause.created_at[Op.gte] = new Date(date_from);
-      if (date_to) {
-        const endDate = new Date(date_to);
-        endDate.setHours(23, 59, 59, 999);
-        whereClause.created_at[Op.lte] = endDate;
-      }
-    }
-
-    if (search) {
-      whereClause.description = { [Op.like]: `%${search}%` };
-    }
-
-    const { count, rows } = await Expense.findAndCountAll({
-      where: whereClause,
-      include: [
-        { model: WalletAccount, attributes: ['id', 'name'] },
-        { 
-            model: ExpenseSubType, 
-            as: 'SubType', 
-            attributes: ['id', 'sub_type_name'],
-            include: [{ model: ExpenseType, as: 'ParentType', attributes: ['id', 'type_name'] }]
-        }
-      ],
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      order: [['created_at', 'DESC']]
-    });
-
-    const totalAmount = await Expense.sum('amount', { where: whereClause });
-
-    res.json({ 
-      success: true, 
-      data: rows,
-      meta: { 
-        total: count,
-        total_sum: totalAmount || 0,
-        page: parseInt(page),
-        last_page: Math.ceil(count / limit)
-      }
-    });
+    res.json(await require("../utils/expenseList")(req.user, req.query));
   } catch (err) {
-    console.error('List Expenses Error:', err);
-    res.status(500).json({ success: false, message: 'Failed to fetch expenses' });
+    console.error("List Expenses Error:", err);
+    res.status(err.status || 500).json({ success: false, message: err.status === 400 ? err.message : "Failed to fetch expenses" });
   }
 };
 
@@ -74,7 +21,7 @@ exports.listExpenses = async (req, res) => {
 exports.getExpense = async (req, res) => {
   try {
     const expense = await Expense.findOne({
-      where: { id: req.params.id, tenant_id: req.user.tenant_id },
+      where: { id: req.params.id, tenant_id: req.user.tenant_id, salary_payroll_id: null },
       include: [
         { model: WalletAccount, attributes: ['id', 'name'] },
         { 
@@ -193,7 +140,7 @@ exports.updateExpense = async (req, res) => {
             throw err;
         }
     } catch (err) {
-        res.status(500).json({ success: false, message: 'Failed to update expense' });
+        res.status(err.status || 500).json({ success: false, message: err.status === 409 ? err.message : 'Failed to update expense' });
     }
 };
 
@@ -251,7 +198,7 @@ exports.markAsPaid = async (req, res) => {
   } catch (err) {
     await transaction.rollback();
     console.error('Pay Expense Error:', err);
-    res.status(500).json({ success: false, message: 'Failed to process payment' });
+    res.status(err.status || 500).json({ success: false, message: err.status === 409 ? err.message : 'Failed to process payment' });
   }
 };
 
@@ -270,6 +217,6 @@ exports.deleteExpense = async (req, res) => {
     await expense.destroy();
     res.json({ success: true, message: 'Expense deleted' });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Failed to delete expense' });
+    res.status(err.status || 500).json({ success: false, message: err.status === 409 ? err.message : 'Failed to delete expense' });
   }
 };

@@ -42,6 +42,8 @@ const SalaryPayroll = sequelize.define('SalaryPayroll', {
     type: DataTypes.TEXT,
     allowNull: true
   },
+  // Null on historical payroll; never infer or backfill an expense automatically.
+  expense_id: { type: DataTypes.BIGINT, allowNull: true, defaultValue: null },
   created_by: {
     type: DataTypes.INTEGER,
     allowNull: true,

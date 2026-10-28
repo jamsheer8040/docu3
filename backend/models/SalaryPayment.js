@@ -55,7 +55,11 @@ const SalaryPayment = sequelize.define('SalaryPayment', {
   notes: {
     type: DataTypes.TEXT,
     allowNull: true
-  }
+  },
+  reversed_at:{type:DataTypes.DATE,allowNull:true},
+  reversed_by_user_id:{type:DataTypes.INTEGER,allowNull:true},
+  reversal_reason:{type:DataTypes.TEXT,allowNull:true},
+  reversal_transaction_id:{type:DataTypes.INTEGER,allowNull:true}
 }, {
   tableName: 'salary_payments',
   timestamps: true,

@@ -280,11 +280,50 @@
       </v-data-table>
     </v-card>
 
+    <v-dialog v-model="createSourceVisible" max-width="640" :persistent="quotationLoading">
+      <v-card class="soft-card pa-6">
+        <v-card-title class="px-0 pt-0">Create Sales Order</v-card-title>
+        <v-card-text class="px-0">
+          <v-select
+            v-model="createSource"
+            :items="createSourceOptions"
+            label="Create order"
+            variant="outlined"
+            :disabled="quotationLoading"
+            @update:model-value="loadAvailableQuotations"
+          />
+          <template v-if="createSource === 'quotation'">
+            <v-autocomplete
+              v-model="selectedQuotationId"
+              :items="availableQuotations"
+              item-title="selection_label"
+              item-value="id"
+              label="Quotation"
+              placeholder="Search by quotation number or recipient"
+              variant="outlined"
+              :loading="quotationLoading"
+              :disabled="quotationLoading"
+              no-data-text="No quotations available to convert"
+              clearable
+            />
+            <p class="text-body-2 text-medium-emphasis">Quotation details will fill the editable order. Saving creates an Unconfirmed sales order.</p>
+            <v-alert v-if="quotationError" type="error" variant="tonal" class="mt-4">{{ quotationError }}</v-alert>
+          </template>
+        </v-card-text>
+        <v-card-actions class="px-0 pb-0">
+          <v-spacer />
+          <v-btn variant="text" :disabled="quotationLoading" @click="createSourceVisible = false">Cancel</v-btn>
+          <v-btn color="primary" variant="flat" :loading="quotationLoading" :disabled="createSource === 'quotation' && !selectedQuotationId" @click="continueCreateOrder">Continue</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <SalesOrderDialog
       v-model="dialogVisible"
-      :customers="customers"
-      :service-types="serviceTypes"
+      :customers="quotationSeed ? conversionCustomers : customers"
+      :service-types="quotationSeed ? conversionServices : serviceTypes"
       :order-to-edit="orderToEdit"
+      :quotation-seed="quotationSeed"
       @saved="fetchData"
     />
 
@@ -321,6 +360,64 @@ const dialogVisible = ref(false)
 const detailVisible = ref(false)
 const selectedOrder = ref(null)
 const orderToEdit = ref(null)
+const createSourceVisible = ref(false)
+const createSource = ref('manual')
+const selectedQuotationId = ref(null)
+const availableQuotations = ref([])
+const quotationLoading = ref(false)
+const quotationError = ref('')
+const quotationSeed = ref(null)
+const conversionCustomers = ref([])
+const conversionServices = ref([])
+const createSourceOptions = computed(() => [
+  { title: 'Create manually', value: 'manual' },
+  ...(authStore.can('quotations', 'read') && authStore.can('quotations', 'edit')
+    ? [{ title: 'From quotation', value: 'quotation' }] : [])
+])
+
+const loadAvailableQuotations = async () => {
+  selectedQuotationId.value = null
+  quotationError.value = ''
+  availableQuotations.value = []
+  if (createSource.value !== 'quotation') return
+  quotationLoading.value = true
+  try {
+    const response = await $api.get('/quotations')
+    availableQuotations.value = response.data.data
+      .filter(quote => !quote.sales_order_id && ['Draft', 'Sent', 'Accepted'].includes(quote.status)
+        && authStore.canRecord('quotations', 'detail', quote) && authStore.canRecord('quotations', 'edit', quote))
+      .map(quote => ({ ...quote, selection_label: `${quote.quotation_number} · ${quote.recipient_name || 'Unnamed recipient'}` }))
+  } catch (error) {
+    quotationError.value = error.response?.data?.message || 'Unable to load quotations. Choose Create manually, then From quotation to retry.'
+  } finally {
+    quotationLoading.value = false
+  }
+}
+
+const continueCreateOrder = async () => {
+  if (quotationLoading.value) return
+  if (createSource.value === 'quotation') {
+    if (!selectedQuotationId.value) return
+    quotationLoading.value = true
+    quotationError.value = ''
+    try {
+      const response = await $api.get(`/quotations/${selectedQuotationId.value}/sales-order-draft`)
+      quotationSeed.value = response.data.data.seed
+      conversionCustomers.value = response.data.data.customers
+      conversionServices.value = response.data.data.services
+    } catch (error) {
+      quotationError.value = error.response?.data?.message || 'Unable to prepare the sales order.'
+      return
+    } finally {
+      quotationLoading.value = false
+    }
+  } else {
+    quotationSeed.value = null
+  }
+  orderToEdit.value = null
+  createSourceVisible.value = false
+  dialogVisible.value = true
+}
 
 const headers = [
   { title: 'ORDER NO.', key: 'order_number', sortable: true },
@@ -435,11 +532,17 @@ onMounted(() => {
 
 const openCreateDialog = () => {
   orderToEdit.value = null
-  dialogVisible.value = true
+  quotationSeed.value = null
+  createSource.value = 'manual'
+  selectedQuotationId.value = null
+  availableQuotations.value = []
+  quotationError.value = ''
+  createSourceVisible.value = true
 }
 useCreateAction('sales_orders', openCreateDialog)
 
 const openEditDialog = (item) => {
+  quotationSeed.value = null
   orderToEdit.value = item
   dialogVisible.value = true
 }

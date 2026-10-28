@@ -130,6 +130,25 @@
         </template>
       </v-data-table-server>
     </v-card>
+    <div class="d-flex justify-end mt-6">
+      <v-card class="pa-6 rounded-xl profit-summary" variant="tonal" color="primary" :aria-busy="loading">
+        <h2 class="text-h6 font-weight-bold mb-1">Profit Summary</h2>
+        <div class="text-caption mb-5 opacity-70">Selected report period · All pages</div>
+        <div v-for="row in profitSummaryRows" :key="row.label" class="d-flex justify-space-between ga-6 mb-3">
+          <span>{{ row.label }}</span>
+          <span class="font-weight-bold text-no-wrap">AED {{ row.value.toFixed(2) }}</span>
+        </div>
+        <div v-if="totals.discounts" class="text-caption opacity-70 mb-4">
+          Service charges are after AED {{ totals.discounts.toFixed(2) }} in discounts.
+        </div>
+        <v-divider class="my-4" />
+        <div class="d-flex justify-space-between ga-6 text-h6 font-weight-bold" :class="totals.netProfit < 0 ? 'text-error' : 'text-success'">
+          <span>Net Profit</span>
+          <span class="text-no-wrap">AED {{ totals.netProfit.toFixed(2) }}</span>
+        </div>
+        <div class="text-caption opacity-70 mt-3">Service charges − expenses − commission − salary</div>
+      </v-card>
+    </div>
   </v-container>
 </template>
 
@@ -156,8 +175,19 @@ const totals = reactive({
   revenue: 0,
   cost: 0,
   overhead: 0,
+  netServiceCharges: 0,
+  discounts: 0,
+  operationalExpenses: 0,
+  commission: 0,
+  salary: 0,
   netProfit: 0
 });
+const profitSummaryRows = computed(() => [
+  { label: 'Total Service Charges', value: totals.netServiceCharges },
+  { label: 'Total Expenses', value: totals.operationalExpenses },
+  { label: 'Total Commission', value: totals.commission },
+  { label: 'Total Salary', value: totals.salary }
+]);
 
 const filters = reactive({
   from: queryDate('from'),
@@ -231,6 +261,11 @@ const fetchData = async () => {
         profit += parseFloat(i.gross_profit || 0);
       });
       totals.revenue = Number(res.data.data.totals?.service_charges || 0);
+      totals.netServiceCharges = Number(res.data.data.totals?.net_service_charges || 0);
+      totals.discounts = Number(res.data.data.totals?.discounts || 0);
+      totals.operationalExpenses = Number(res.data.data.totals?.operational_expenses || 0);
+      totals.commission = Number(res.data.data.totals?.commission_expenses || 0);
+      totals.salary = Number(res.data.data.totals?.salary_expenses || 0);
       totals.cost = cost;
       // Note: net profit = gross profit - overhead
       totals.netProfit = Number(res.data.data.totals?.net_profit || 0);
@@ -271,6 +306,10 @@ const exportCSV = () => {
   rows.push(['']);
   if(commissionEnabled.value)rows.push(['Approved Commission (This Page)', currentTotals.value.commission.toFixed(2)]);
   rows.push(['Total Overhead Expenses', totals.overhead.toFixed(2)]);
+  rows.push(['Service Charges after Discounts (Selected Period)', totals.netServiceCharges.toFixed(2)]);
+  rows.push(['Operational Expenses (Selected Period)', totals.operationalExpenses.toFixed(2)]);
+  rows.push(['Commission Expense (Selected Period)', totals.commission.toFixed(2)]);
+  rows.push(['Salary Expense (Selected Period)', totals.salary.toFixed(2)]);
   rows.push(['True Net Profit (Selected Period)', totals.netProfit.toFixed(2)]);
 
   const csvContent = [csvHeaders.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -285,3 +324,7 @@ const exportCSV = () => {
   document.body.removeChild(link);
 };
 </script>
+
+<style scoped>
+.profit-summary { width: 100%; max-width: 520px; }
+</style>

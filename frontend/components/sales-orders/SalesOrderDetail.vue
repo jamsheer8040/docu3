@@ -5,8 +5,13 @@
         <div>
           <span class="text-h5 font-weight-black text-primary mr-3">{{ order.order_number }}</span>
           <v-chip size="small" color="secondary" variant="flat" class="font-weight-bold">{{ formatDate(order.order_date) }}</v-chip>
+          <v-chip v-if="order.source_quotation_id" size="small" class="ml-2" :color="order.confirmation_status === 'Confirmed' ? 'success' : order.confirmation_status === 'Cancelled' ? 'error' : 'warning'">{{ order.confirmation_status }}</v-chip>
         </div>
         <div class="d-flex align-center flex-wrap ga-2">
+          <template v-if="order.confirmation_status === 'Unconfirmed' && canEdit">
+            <v-btn color="success" variant="tonal" @click="orderAction = 'confirm'">Confirm Order</v-btn>
+            <v-btn color="error" variant="text" @click="orderAction = 'cancel'">Cancel Order</v-btn>
+          </template>
           <v-btn
             v-if="canEdit"
             color="primary"
@@ -104,7 +109,9 @@
                 </div>
               </td>
               <td class="text-end" style="min-width: 200px;">
-                <template v-if="!item.service_order_id">
+                <span v-if="order.confirmation_status === 'Unconfirmed'" class="text-caption">Confirm order first</span>
+                <span v-else-if="order.confirmation_status === 'Cancelled'" class="text-caption">Order cancelled</span>
+                <template v-else-if="!item.service_order_id">
                   <template v-if="!item.confirmed && !item.cancelled && canEdit">
                     <v-btn
                       color="success"
@@ -162,6 +169,21 @@
             </tr>
           </tbody>
         </v-table>
+        <div class="d-flex justify-end mt-5">
+          <div style="width: 100%; max-width: 380px;">
+            <div class="d-flex justify-space-between mb-2"><span>Subtotal</span><strong>AED {{ Number(order.subtotal || 0).toFixed(2) }}</strong></div>
+            <div class="d-flex justify-space-between mb-2"><span>Discount</span><strong>AED {{ Number(order.discount || 0).toFixed(2) }}</strong></div>
+            <div class="d-flex justify-space-between mb-2"><span>VAT ({{ Number(order.tax_rate || 0) }}%)</span><strong>AED {{ Number(order.tax_amount || 0).toFixed(2) }}</strong></div>
+            <v-divider class="my-3" />
+            <div class="d-flex justify-space-between text-h6 font-weight-bold"><span>Total</span><span>AED {{ Number(order.total || 0).toFixed(2) }}</span></div>
+          </div>
+        </div>
+        <v-row class="mt-5">
+          <v-col v-if="bankDetailsText" cols="12" md="6"><h3 class="text-subtitle-1 font-weight-bold mb-2">Bank Details</h3><p style="white-space: pre-line; overflow-wrap: anywhere;">{{ bankDetailsText }}</p></v-col>
+          <v-col v-if="order.payment_terms" cols="12" md="6"><h3 class="text-subtitle-1 font-weight-bold mb-2">Payment Terms</h3><p style="white-space: pre-line; overflow-wrap: anywhere;">{{ order.payment_terms }}</p></v-col>
+          <v-col v-if="order.terms" cols="12"><h3 class="text-subtitle-1 font-weight-bold mb-2">Terms and Conditions</h3><p style="white-space: pre-line; overflow-wrap: anywhere;">{{ order.terms }}</p></v-col>
+          <v-col v-if="order.notes" cols="12"><h3 class="text-subtitle-1 font-weight-bold mb-2">Customer-facing Notes</h3><p style="white-space: pre-line; overflow-wrap: anywhere;">{{ order.notes }}</p></v-col>
+        </v-row>
           </v-col>
 
           <!-- 20% Right Column: Lifecycle Tracker -->
@@ -407,6 +429,12 @@
       <v-card-actions class="pa-4"><v-spacer /><v-btn :disabled="!!pushing" @click="pushDialog = false">Cancel</v-btn><v-btn color="primary" variant="tonal" :loading="!!pushing" @click="pushService">Push to Service</v-btn></v-card-actions>
     </v-card>
   </v-dialog>
+  <v-dialog :model-value="!!orderAction" max-width="450" :persistent="savingOrderAction" @update:model-value="value => { if (!value && !savingOrderAction) orderAction = '' }">
+    <v-card rounded="xl" class="pa-5"><h3 class="text-h6">{{ orderAction === 'confirm' ? 'Confirm sales order?' : 'Cancel sales order?' }}</h3>
+      <p class="my-4">{{ orderAction === 'confirm' ? 'Confirm the business and create or link the customer. Services will remain unstarted.' : 'Keep this order as cancelled. No customer, service or wallet transaction will be created.' }}</p>
+      <div class="d-flex justify-end ga-2"><v-btn :disabled="savingOrderAction" @click="orderAction = ''">Back</v-btn><v-btn :color="orderAction === 'cancel' ? 'error' : 'success'" :loading="savingOrderAction" @click="applyOrderAction">{{ orderAction === 'confirm' ? 'Confirm Order' : 'Cancel Order' }}</v-btn></div>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup>
@@ -425,7 +453,15 @@ const props = defineProps({
   modelValue: Boolean,
   order: Object
 })
-const canEdit = computed(() => props.order && auth.canRecord('sales_orders', 'edit', props.order))
+const canEdit = computed(() => props.order && props.order.confirmation_status !== 'Cancelled' && auth.canRecord('sales_orders', 'edit', props.order))
+const orderAction = ref(''), savingOrderAction = ref(false)
+const applyOrderAction = async () => {
+  savingOrderAction.value = true
+  try { await $api.post(`/sales-orders/${props.order.id}/confirmation`, { action: orderAction.value }); orderAction.value = ''; emit('refresh'); uiStore.showSuccess('Sales order updated.') }
+  catch (error) { uiStore.showError(error.response?.data?.message || 'Unable to update the sales order.') }
+  finally { savingOrderAction.value = false }
+}
+const bankDetailsText = computed(() => [['bank_name','Bank'],['account_name','Account name'],['account_number','Account number'],['iban','IBAN'],['swift','SWIFT / BIC'],['branch','Branch']].filter(([key]) => props.order?.bank_details?.[key]).map(([key,label]) => `${label}: ${props.order.bank_details[key]}`).join('\n'))
 
 const emit = defineEmits(['update:modelValue', 'refresh', 'edit'])
 const { $api } = useNuxtApp()

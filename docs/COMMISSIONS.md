@@ -27,6 +27,8 @@ The old employee, role, employment-day, service, invoice-total, priority and dat
 
 ## One invoice and one salesperson
 
+Staff detail pages include a **Commission** tab with that employee's eligible invoices and commission, pending approval, approved amount, paid amount, outstanding balance, payable-now amount and rejected commission. It defaults to all history, supports invoice-date filters and expands each invoice's payment/reversal history. The tab uses the same statement API and accounting totals as Commissions, with a fixed staff filter and no staff selector. Own-only permission cannot open another employee's commission tab; all-view permission allows the selected employee's history. The tab is read-only and hidden when the workspace commission master is OFF.
+
 Only the customer's assigned active internal salesperson receives commission. Customer creation defaults this assignment to the creator and allows another salesperson to be chosen. Reassigning the customer does not transfer an existing saved commission to someone else. Foreign, inactive, portal or missing owners cannot qualify.
 
 ## Lifecycle and accounting

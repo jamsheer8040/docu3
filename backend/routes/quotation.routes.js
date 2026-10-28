@@ -7,6 +7,8 @@ router.put('/defaults',requirePermission('settings','write'),controller.defaults
 router.get('/',requirePermission('quotations','read'),controller.list);
 router.post('/',requirePermission('quotations','write'),controller.create);
 router.get('/:id',requirePermission('quotations','read'),controller.detail);
+router.get('/:id/sales-order-draft',requirePermission('quotations','read'),controller.salesOrderDraft);
+router.post('/:id/sales-order',requirePermission('quotations','write'),controller.saveSalesOrder);
 router.put('/:id',requirePermission('quotations','write'),controller.update);
 router.post('/:id/status',requirePermission('quotations','write'),controller.status);
 router.delete('/:id',requirePermission('quotations','delete'),controller.remove);

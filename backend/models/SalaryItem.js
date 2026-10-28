@@ -36,6 +36,12 @@ const SalaryItem = sequelize.define('SalaryItem', {
     allowNull: false,
     defaultValue: 0.00
   },
+  // Nullable for historical payroll: never infer the basis used by old calculations.
+  base_salary: {type:DataTypes.DECIMAL(10,2),allowNull:true},
+  master_base_salary: {type:DataTypes.DECIMAL(10,2),allowNull:true},
+  days_in_month: {type:DataTypes.INTEGER,allowNull:true},
+  calculation_version: {type:DataTypes.INTEGER,allowNull:true},
+  override_reason: {type:DataTypes.TEXT,allowNull:true},
   hr_allowance: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,

@@ -2,6 +2,7 @@ const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
 const SalesOrderItem = sequelize.define('SalesOrderItem', {
+  expected_date:{type:DataTypes.DATEONLY,allowNull:true},
   id: {
     type: DataTypes.BIGINT,
     primaryKey: true,

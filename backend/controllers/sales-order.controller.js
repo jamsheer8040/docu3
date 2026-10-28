@@ -1,5 +1,11 @@
 const { SalesOrder, SalesOrderItem, ServiceOrder, Customer, User, ServiceType, Invoice, sequelize } = require('../models');
 const { Op } = require('sequelize');
+const pricing = require('../utils/salesOrderPricing');
+exports.confirmOrder=async(req,res)=>{try{const order=await require('../utils/quotationOrder').confirmation(req.params.id,req.body.action,req.user);res.json({success:true,data:order});}catch(error){res.status(error.status||500).json({success:false,message:error.message});}};
+exports.getPricingDefaults = async (req, res) => {
+  try { res.json({ success: true, data: { tax_rate: await pricing.defaultRate(req.user.tenant_id), document_defaults: await require('../utils/salesOrderDocument').defaults(req.user.tenant_id) } }); }
+  catch (error) { res.status(500).json({ success: false, message: 'Unable to load sales order VAT defaults.' }); }
+};
 
 /**
  * Get all Sales Orders
@@ -27,7 +33,7 @@ exports.getAllSalesOrders = async (req, res) => {
       order: [['created_at', 'DESC']]
     });
 
-    res.json({ success: true, data: salesOrders });
+    res.json({ success: true, data: await Promise.all(salesOrders.map(order => pricing.serialize(order, req.user.tenant_id))) });
   } catch (error) {
     console.error('[SalesOrderController] Error getting sales orders:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -50,6 +56,8 @@ exports.confirmServiceItem = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Service Item not found' });
     }
 
+    const parent=await SalesOrder.findOne({where:{id:item.sales_order_id,tenant_id:req.user.tenant_id}});
+    if(!parent||parent.confirmation_status!=='Confirmed')return res.status(409).json({success:false,message:'Confirm the sales order before changing service confirmation.'});
     if (action === 'confirm') {
       item.confirmed = true;
       item.confirm_notes = notes || null;
@@ -98,6 +106,7 @@ exports.getSalesOrderById = async (req, res) => {
     });
 
     if (!salesOrder) return res.status(404).json({ success: false, message: 'Sales Order not found' });
+    if(req.user.Role?.type==='CustomerPortal'&&!req.user.LinkedCustomers?.some(c=>String(c.id)===String(salesOrder.customer_id)))return res.status(404).json({success:false,message:'Sales Order not found'});
 
     // Compute dynamic status for each item based on ServiceOrder
     const computedItems = salesOrder.SalesOrderItems.map(item => {
@@ -114,7 +123,7 @@ exports.getSalesOrderById = async (req, res) => {
     const data = salesOrder.toJSON();
     data.SalesOrderItems = computedItems;
 
-    res.json({ success: true, data });
+    res.json({ success: true, data: await pricing.serialize(data, req.user.tenant_id) });
   } catch (error) {
     console.error('[SalesOrderController] Error getting sales order:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -127,6 +136,7 @@ exports.getSalesOrderById = async (req, res) => {
 exports.createSalesOrder = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
+    await require('../models').Tenant.findByPk(req.user.tenant_id,{transaction,lock:transaction.LOCK.UPDATE});
     const { 
       customer_id, 
       contact_person, 
@@ -137,11 +147,15 @@ exports.createSalesOrder = async (req, res) => {
       items 
     } = req.body;
 
+    if(!customer_id || !await Customer.findOne({where:{id:customer_id,tenant_id:req.user.tenant_id},attributes:['id'],transaction}))throw Object.assign(new Error('Choose an accessible customer for this sales order.'),{status:400});
+    // Validate line numbers before the database can coerce fractional quantities.
+    pricing.calculate(items || [], 0, 0);
     // Generate SO Number
-    const count = await require('../utils/recordAccess').internalRead(() => SalesOrder.count({ where: { tenant_id: req.user.tenant_id }, transaction }));
-    const order_number = `SO-${new Date().getFullYear()}${(count + 1).toString().padStart(4, '0')}`;
+    const order_number = await require('../utils/salesOrderNumber')(req.user.tenant_id,transaction);
 
     const salesOrder = await SalesOrder.create({
+      ...await pricing.settings(req.body, req.user.tenant_id, null, transaction),
+      ...await require('../utils/salesOrderDocument').prepare(req.body, req.user.tenant_id, null, transaction),
       order_number,
       customer_id,
       contact_person,
@@ -163,6 +177,7 @@ exports.createSalesOrder = async (req, res) => {
         service_charge: item.service_charge || 0.00,
         estimated_price: item.estimated_price || 0.00,
         expected_processing_time: item.expected_processing_time,
+        expected_date: require('../utils/quotationOrder').date(item.expected_date),
         priority: item.priority || 'Normal',
         status: 'Not Started',
         tenant_id: req.user.tenant_id
@@ -171,12 +186,14 @@ exports.createSalesOrder = async (req, res) => {
       await SalesOrderItem.bulkCreate(orderItems, { transaction });
     }
 
+    const savedItems = await SalesOrderItem.findAll({ where: { tenant_id: req.user.tenant_id, sales_order_id: salesOrder.id }, transaction });
+    const saved = await pricing.serialize({ ...salesOrder.toJSON(), SalesOrderItems: savedItems }, req.user.tenant_id, transaction);
     await transaction.commit();
-    res.status(201).json({ success: true, data: salesOrder, message: 'Sales Order created successfully' });
+    res.status(201).json({ success: true, data: saved, message: 'Sales Order created successfully' });
   } catch (error) {
     await transaction.rollback();
     console.error('[SalesOrderController] Error creating sales order:', error);
-    res.status(500).json({ success: false, message: 'Server error', error: error.message, stack: error.stack });
+    res.status(error.status || 500).json({ success: false, message: error.status ? error.message : 'Server error' });
   }
 };
 
@@ -210,6 +227,7 @@ exports.pushService = async (req, res) => {
     }
 
     // Create ServiceOrder
+    if(item.SalesOrder.confirmation_status!=='Confirmed')throw Object.assign(new Error('Confirm the sales order before starting services.'),{status:409});
     const serviceOrder = await ServiceOrder.create({
       customer_id: item.SalesOrder.customer_id,
       service_type_id: item.service_type_id,
@@ -244,6 +262,7 @@ exports.pushService = async (req, res) => {
 exports.updateSalesOrder = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
+    await require('../models').Tenant.findByPk(req.user.tenant_id,{transaction,lock:transaction.LOCK.UPDATE});
     const { id } = req.params;
     const {
       customer_id,
@@ -267,17 +286,26 @@ exports.updateSalesOrder = async (req, res) => {
     }
 
     // Update header fields
-    if (customer_id) salesOrder.customer_id = customer_id;
+    if(salesOrder.confirmation_status==='Cancelled')throw Object.assign(new Error('Cancelled sales orders cannot be edited.'),{status:409});
+    Object.assign(salesOrder, await pricing.settings(req.body, req.user.tenant_id, salesOrder, transaction));
+    Object.assign(salesOrder, await require('../utils/salesOrderDocument').prepare(req.body, req.user.tenant_id, salesOrder, transaction));
+    if (customer_id) {
+      if(salesOrder.source_quotation_id && !await Customer.findOne({where:{id:customer_id,tenant_id:req.user.tenant_id},attributes:['id'],transaction}))throw Object.assign(new Error('Choose an accessible customer from this company.'),{status:400});
+      salesOrder.customer_id = customer_id;
+    }
     if (contact_person !== undefined) salesOrder.contact_person = contact_person;
     if (sales_executive_id !== undefined) salesOrder.sales_executive_id = sales_executive_id;
     if (branch !== undefined) salesOrder.branch = branch;
     if (customer_reference !== undefined) salesOrder.customer_reference = customer_reference;
     if (internal_remarks !== undefined) salesOrder.internal_remarks = internal_remarks;
+    if(salesOrder.source_quotation_id && salesOrder.confirmation_status==='Unconfirmed' && req.body.recipient_snapshot)salesOrder.recipient_snapshot=require('../utils/quotationOrder').recipient(req.body.recipient_snapshot);
+    if(req.body.notes!==undefined){if(typeof req.body.notes!=='string'||req.body.notes.length>5000)throw Object.assign(new Error('Notes must contain at most 5000 characters.'),{status:400});salesOrder.notes=req.body.notes;}
 
     await salesOrder.save({ transaction });
 
     // Handle service items
     if (items && Array.isArray(items)) {
+      pricing.calculate(items, 0, 0);
       const existingItems = salesOrder.SalesOrderItems || [];
       const existingItemIds = existingItems.map(i => Number(i.id));
 
@@ -311,6 +339,7 @@ exports.updateSalesOrder = async (req, res) => {
               dbItem.service_charge = item.service_charge !== undefined ? item.service_charge : dbItem.service_charge;
               dbItem.estimated_price = item.estimated_price !== undefined ? item.estimated_price : dbItem.estimated_price;
               dbItem.expected_processing_time = item.expected_processing_time !== undefined ? item.expected_processing_time : dbItem.expected_processing_time;
+              if(item.expected_date!==undefined)dbItem.expected_date=require('../utils/quotationOrder').date(item.expected_date);
               dbItem.priority = item.priority || dbItem.priority;
               await dbItem.save({ transaction });
             } else {
@@ -331,6 +360,7 @@ exports.updateSalesOrder = async (req, res) => {
             service_charge: item.service_charge || 0.00,
             estimated_price: item.estimated_price || 0.00,
             expected_processing_time: item.expected_processing_time || item.expected_date || null,
+            expected_date: require('../utils/quotationOrder').date(item.expected_date),
             priority: item.priority || 'Normal',
             status: 'Not Started',
             tenant_id: req.user.tenant_id
@@ -339,12 +369,14 @@ exports.updateSalesOrder = async (req, res) => {
       }
     }
 
+    const savedItems = await SalesOrderItem.findAll({ where: { tenant_id: req.user.tenant_id, sales_order_id: salesOrder.id }, transaction });
+    const saved = await pricing.serialize({ ...salesOrder.toJSON(), SalesOrderItems: savedItems }, req.user.tenant_id, transaction);
     await transaction.commit();
-    res.json({ success: true, message: 'Sales Order updated successfully', data: salesOrder });
+    res.json({ success: true, message: 'Sales Order updated successfully', data: saved });
   } catch (error) {
     await transaction.rollback();
     console.error('[SalesOrderController] Error updating sales order:', error);
-    res.status(500).json({ success: false, message: 'Server error updating sales order', error: error.message });
+    res.status(error.status || 500).json({ success: false, message: error.status ? error.message : 'Server error updating sales order' });
   }
 };
 
@@ -361,6 +393,7 @@ exports.deleteSalesOrder = async (req, res) => {
     if (!salesOrder) return res.status(404).json({ success: false, message: 'Sales Order not found' });
 
     // Validation: Check if any items have been pushed to execution
+    if(salesOrder.source_quotation_id)return res.status(409).json({success:false,message:'Retain converted sales orders for quotation history. Cancel an unconfirmed order instead.'});
     if (salesOrder.SalesOrderItems && salesOrder.SalesOrderItems.some(item => item.service_order_id)) {
       return res.status(400).json({ 
         success: false, 
@@ -368,7 +401,6 @@ exports.deleteSalesOrder = async (req, res) => {
       });
     }
 
-    const { sequelize, SalesOrderItem } = require('../models');
     const t = await sequelize.transaction();
     try {
       await SalesOrderItem.destroy({ where: { sales_order_id: salesOrder.id, tenant_id: req.user.tenant_id }, transaction: t });
@@ -407,7 +439,10 @@ exports.downloadProformaPDF = async (req, res) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=Proforma_Invoice_${order.order_number}.pdf`);
 
-    await generateProformaInvoicePDF(order, req.user.tenant_id, res);
+    if(req.user.Role?.type==='CustomerPortal'&&!req.user.LinkedCustomers?.some(c=>String(c.id)===String(order.customer_id)))return res.status(404).json({success:false,message:'Sales Order not found'});
+    const pdfOrder=await pricing.serialize(order, req.user.tenant_id);
+    if(order.source_quotation_id&&order.recipient_snapshot)pdfOrder.Customer={...(pdfOrder.Customer||{}),...order.recipient_snapshot,phone_whatsapp:order.recipient_snapshot.phone};
+    await generateProformaInvoicePDF(pdfOrder, req.user.tenant_id, res);
 
   } catch (error) {
     console.error('[SalesOrderController] Error generating Proforma PDF:', error);

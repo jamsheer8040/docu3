@@ -67,6 +67,10 @@ test('approval recognises exactly one expense, payable balance and profit deduct
   assert.equal(await db.Expense.count(),expenses+1);await e.reload();
   assert.equal(e.approval_status,'Approved');const expense=await db.Expense.findByPk(e.approval_expense_id);assert.equal(Number(expense.amount),7);assert.equal(expense.status,'Unpaid');
   assert.equal((await profit()).net_profit,before.net_profit-7);
+  const totals=(await req('/reports/profit-details?limit=1')).data.totals;
+  assert.equal(totals.commission_expenses,before.commission_expenses+7);
+  assert.equal(totals.net_service_charges,totals.service_charges-totals.discounts);
+  assert.equal(Math.round((totals.net_service_charges-totals.operational_expenses-totals.commission_expenses-totals.salary_expenses)*100)/100,totals.net_profit);
   assert.equal((await panel(i)).data.profit.net_profit,163);
   const row=(await req('/commissions/statement')).data.entries.find(row=>row.id===e.id);assert.equal(row.balance,7);assert.equal(row.payable,0);
   assert.equal((await req(`/commissions/entries/${e.id}/pay`,admin,'POST',{amount:7,payment_date:day,account_id:wallet.id},'unpaid-release')).status,400);

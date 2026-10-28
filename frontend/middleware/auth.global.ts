@@ -1,4 +1,5 @@
 import { useAuthStore } from '~/stores/auth';
+import { canAccessSalary } from '~/utils/recordPermissions';
 import { useConfigStore } from '~/stores/config';
 
 export default defineNuxtRouteMiddleware(async (to, from) => {
@@ -77,6 +78,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     
     if (requiredModule) {
       const moduleName = routePermissions[requiredModule];
+      if (moduleName === 'expenses' && canAccessSalary(authStore.user)) return;
       if (!authStore.can(moduleName, /^\/[^/]+\/\d+\/?$/.test(to.path) ? 'detail' : 'read')) {
         console.warn(`Access denied to ${to.path}. Missing ${moduleName} permission.`);
         return navigateTo('/'); // Redirect to dashboard if no permission

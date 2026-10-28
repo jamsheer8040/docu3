@@ -6,31 +6,18 @@ const { protect, requirePermission } = require('../middleware/auth.middleware');
 // Protect all salary routes
 router.use(protect);
 
-// Helper middleware: allow if user has either 'expenses' or 'staff' permission (or Admin/Developer)
-const canAccessSalary = (accessType = 'read') => {
-  return (req, res, next) => {
-    if (!req.user || !req.user.Role) {
-      return res.status(403).json({ success: false, message: 'Access denied.' });
-    }
-    if (req.user.Role.name === 'Admin' || req.user.Role.name === 'Developer') {
-      return next();
-    }
-    let perms = req.user.Role.permissions;
-    if (typeof perms === 'string') {
-      try { perms = JSON.parse(perms); } catch (e) { perms = {}; }
-    }
-    if (require('../utils/permissionRules').hasScopedRules(perms)) return requirePermission('staff', accessType)(req, res, next);
-    const hasExp = perms?.expenses && perms.expenses[accessType];
-    const hasStaff = perms?.staff && perms.staff[accessType];
-    if (hasExp || hasStaff) {
-      return next();
-    }
-    return res.status(403).json({
-      success: false,
-      message: `Access denied. Insufficient permissions for salary management (${accessType}).`
-    });
-  };
-};
+// Validate the company/internal-role boundary before privileged-role shortcuts.
+router.use(async(req,res,next)=>{
+  try{
+    const {Role}=require('../models'),{Op}=require('sequelize');
+    const tenant_id=req.user?.tenant_id;
+    if(!tenant_id || req.user.Role?.type!=='Internal')return res.status(403).json({success:false,message:'Salary management is restricted to internal Staff/HR users in this company.'});
+    const role=await Role.findOne({where:{id:req.user.role_id,type:'Internal',tenant_id:{[Op.or]:[{[Op.eq]:tenant_id},{[Op.is]:null}]}},attributes:['id']});
+    if(!role || !require('../utils/salaryAccess').canRead(req.user))return res.status(403).json({success:false,message:'Staff/HR list and detail permissions are required for salary management.'});
+    next();
+  }catch(error){next(error);}
+});
+const canAccessSalary=action=>requirePermission('staff',action==='read'?'detail':action);
 
 // --- Summary (Operational vs Salary vs Combined) ---
 router.get('/summary', canAccessSalary('read'), salaryController.getSummary);
@@ -39,16 +26,22 @@ router.get('/summary', canAccessSalary('read'), salaryController.getSummary);
 router.get('/month/:month', canAccessSalary('read'), salaryController.getMonthPayroll);
 
 // --- Book Monthly Salary ---
-router.post('/book', canAccessSalary('write'), salaryController.bookMonthSalary);
+router.post('/book', canAccessSalary('create'), salaryController.bookMonthSalary);
 
 // --- Individual Payment (Full or Partial) ---
-router.post('/pay-single', canAccessSalary('write'), salaryController.paySingleSalary);
+router.post('/pay-single', canAccessSalary('edit'), salaryController.paySingleSalary);
 
 // --- Batch / Bulk Payment ---
-router.post('/pay-batch', canAccessSalary('write'), salaryController.payBatchSalary);
+router.post('/pay-batch', canAccessSalary('edit'), salaryController.payBatchSalary);
+
+// Corrections retain the original debit and require an internal company Admin.
+router.post('/payments/:id/reverse',(req,res,next)=>{
+  if(req.user.Role?.name!=='Admin')return res.status(403).json({success:false,message:'Only a company administrator can reverse salary payments.'});
+  next();
+},canAccessSalary('edit'),salaryController.reversePayment);
 
 // --- Unbook / Cancel Unpaid Month Payroll ---
-router.delete('/month/:month', canAccessSalary('write'), salaryController.unbookMonthSalary);
+router.delete('/month/:month', canAccessSalary('delete'), salaryController.unbookMonthSalary);
 
 // --- Staff Item Payment History ---
 router.get('/items/:id/payments', canAccessSalary('read'), salaryController.getStaffPaymentHistory);

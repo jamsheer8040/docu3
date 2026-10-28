@@ -233,6 +233,9 @@
               {{ (staff.StaffDocuments || []).length }}
             </v-chip>
           </v-tab>
+          <v-tab v-if="canViewCommission" value="commission" class="font-weight-bold text-none">
+            <v-icon start icon="mdi-percent-circle-outline"></v-icon> Commission
+          </v-tab>
         </v-tabs>
 
         <v-window v-model="activeTab" class="pa-4 pa-sm-6">
@@ -505,6 +508,9 @@
               </template>
             </v-data-table>
           </v-window-item>
+          <v-window-item v-if="canViewCommission" value="commission">
+            <StaffCommissionStatement v-if="activeTab === 'commission'" :key="staff.id" :staff-id="staff.id" />
+          </v-window-item>
         </v-window>
       </v-card>
     </div>
@@ -671,36 +677,39 @@
                 <v-col cols="12" sm="4">
                   <v-text-field
                     v-model.number="editForm.basic_salary"
+                    :rules="[salaryAmountRule]"
                     label="Basic Salary (AED)"
                     type="number"
                     variant="outlined"
                     density="comfortable"
                     min="0"
-                    step="50"
+                    step="0.01"
                     @update:model-value="recalcEditTotalSalary"
                   ></v-text-field>
                 </v-col>
                 <v-col cols="12" sm="4">
                   <v-text-field
                     v-model.number="editForm.hr_allowance"
+                    :rules="[salaryAmountRule]"
                     label="Housing / HR (AED)"
                     type="number"
                     variant="outlined"
                     density="comfortable"
                     min="0"
-                    step="50"
+                    step="0.01"
                     @update:model-value="recalcEditTotalSalary"
                   ></v-text-field>
                 </v-col>
                 <v-col cols="12" sm="4">
                   <v-text-field
                     v-model.number="editForm.other_allowances"
+                    :rules="[salaryAmountRule]"
                     label="Other Allowances (AED)"
                     type="number"
                     variant="outlined"
                     density="comfortable"
                     min="0"
-                    step="50"
+                    step="0.01"
                     @update:model-value="recalcEditTotalSalary"
                   ></v-text-field>
                 </v-col>
@@ -844,16 +853,28 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { useCurrency } from '~/composables/useCurrency';
+import { useConfigStore } from '~/stores/config';
+import { permissionFor } from '~/utils/recordPermissions';
+import StaffCommissionStatement from '~/components/staff/StaffCommissionStatement.vue';
+import {salaryAmountRule,salaryComponentsTotal} from '~/utils/salaryCalculation.mjs';
 
 const route = useRoute();
 const staffId = route.params.id;
 const { $api } = useNuxtApp();
 const { formatCurrency } = useCurrency();
 const auth = useAuthStore();
+const configStore = useConfigStore();
+const canViewCommission = computed(() => {
+  if (!configStore.commissionEnabled || auth.user?.role_type === 'CustomerPortal') return false;
+  if (auth.isAdmin || auth.isDeveloper) return true;
+  const permission = permissionFor(auth.user, 'commissions');
+  const scope = permission.rules?.list || (permission.read ? 'own' : 'none');
+  return scope === 'all' || (scope === 'own' && String(auth.user?.id) === String(staffId));
+});
 
 const canViewStaff = computed(() => auth.isAdmin || auth.can('staff', 'read'));
 const canEditStaff = computed(() => auth.isAdmin || auth.can('staff', 'write'));
@@ -866,6 +887,7 @@ const documentTypes = ref([]);
 const loading = ref(true);
 const error = ref('');
 const activeTab = ref('profile');
+watch(canViewCommission, visible => { if (!visible && activeTab.value === 'commission') activeTab.value = 'profile'; });
 
 const snackbar = reactive({ show: false, text: '', color: 'success' });
 const showNotify = (text, color = 'success') => {
@@ -1103,11 +1125,11 @@ const openEditDialog = () => {
   editDialog.value = true;
 };
 
+const editSalaryTouched=ref(false);
+watch(editDialog,open=>{if(open)editSalaryTouched.value=false;});
 const recalcEditTotalSalary = () => {
-  const b = parseFloat(editForm.basic_salary) || 0;
-  const hr = parseFloat(editForm.hr_allowance) || 0;
-  const o = parseFloat(editForm.other_allowances) || 0;
-  editForm.total_salary = b + hr + o;
+  editSalaryTouched.value=true;
+  try{editForm.total_salary=salaryComponentsTotal(editForm);}catch{editForm.total_salary=null;}
 };
 
 const saveStaffProfile = async () => {
@@ -1116,6 +1138,7 @@ const saveStaffProfile = async () => {
 
   saving.value = true;
   try {
+    if(canEditStaff.value&&editSalaryTouched.value)editForm.total_salary=salaryComponentsTotal(editForm);
     const res = await $api.put(`/users/${staffId}`, editForm);
     if (res.data?.success) {
       staff.value = res.data.data;
@@ -1123,7 +1146,7 @@ const saveStaffProfile = async () => {
       showNotify('Staff profile updated successfully!');
     }
   } catch (err) {
-    showNotify(err.response?.data?.message || 'Failed to update staff profile', 'error');
+    showNotify(err.response?.data?.message || err.message || 'Failed to update staff profile', 'error');
   } finally {
     saving.value = false;
   }

@@ -95,10 +95,10 @@
             class="mb-2"
           ></v-list-item>
           <v-list-item
-            v-if="authStore.can('expenses')"
+            v-if="authStore.can('expenses') || canAccessSalary(authStore.user)"
             prepend-icon="mdi-cash-remove"
-            title="Expenses"
-            to="/expenses"
+            :title="authStore.can('expenses') ? 'Expenses' : 'Salary & Payroll'"
+            :to="authStore.can('expenses') ? '/expenses' : '/expenses?tab=salary'"
             color="primary"
             class="mb-2"
           ></v-list-item>
@@ -346,6 +346,7 @@
 
 <script setup>
 import { useAuthStore } from '~/stores/auth';
+import { canAccessSalary } from '~/utils/recordPermissions';
 import { useUIStore } from '~/stores/ui';
 import { useConfigStore } from '~/stores/config';
 import { useDocumentStore } from '~/stores/documents';

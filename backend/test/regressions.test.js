@@ -27,6 +27,7 @@ async function request(url, user, method = 'GET', body, cookie) {
   if (user) headers.Authorization = `Bearer ${token(user)}`;
   if (cookie) headers.Cookie = cookie;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (method === 'POST' && /\/salaries\/pay-(single|batch)$/.test(url)) headers['Idempotency-Key'] = require('node:crypto').randomUUID();
   return fetch(base + url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
 }
 function file(directory, name) {
@@ -228,6 +229,25 @@ test('document templates isolate settings and exports by tenant and permission',
   assert.equal((await request(root + '/preview?type=invoice&template=classic', denied)).status, 403);
   assert.equal((await request(root + '/preview?type=invoice&template=classic', admin)).status, 200);
   assert.equal((await request(root + '/invoice/1/pdf?template=invalid', admin)).status, 400);
+});
+
+test('internal quotation detail includes pricing and salesperson while PDF omits internal amounts', async () => {
+ const response=await request('/api/v1/quotations',admin,'POST',{
+  recipient_name:'Internal quotation sample',assigned_user_id:admin.id,contact_person:'Sample contact',customer_reference:'VIEW-REF',branch:'Dubai',
+  internal_remarks:'PRIVATE REMARK 8844',items:[{service_name:'Visa assistance',description:'Customer-facing service description',quantity:2,cost:123.45,service_charge:67.89,rate:191.34,expected_processing_time:'3 working days'}]
+ });
+ assert.equal(response.status,201);const quote=(await response.json()).data;
+ const detail=await request(`/api/v1/quotations/${quote.id}`,admin);assert.equal(detail.status,200);const data=(await detail.json()).data;
+ assert.equal(Number(data.items[0].cost),123.45);assert.equal(Number(data.items[0].service_charge),67.89);
+ assert.equal(data.items[0].expected_processing_time,'3 working days');assert.equal(data.assigned_staff.name,admin.name);
+ assert.equal(data.customer_reference,'VIEW-REF');assert.equal(data.internal_remarks,'PRIVATE REMARK 8844');
+ assert.equal((await request(`/api/v1/quotations/${quote.id}`,outsider)).status,404);
+ assert.equal((await request(`/api/v1/quotations/${quote.id}`,portal)).status,403);
+ for(const style of ['classic','modern','compact','minimal']){
+  const pdf=await request(`/api/v1/quotations/${quote.id}/pdf?template=${style}`,admin);assert.equal(pdf.status,200);
+  const bytes=Buffer.from(await pdf.arrayBuffer());assert.ok(bytes.toString('latin1').startsWith('%PDF-'));
+  if(process.env.QUOTATION_PDF_QA_DIR){fs.mkdirSync(process.env.QUOTATION_PDF_QA_DIR,{recursive:true});fs.writeFileSync(path.join(process.env.QUOTATION_PDF_QA_DIR,`quotation-${style}.pdf`),bytes);}
+ }
 });
 
 test('invoice PDF type requires both VAT enabled and registration and stays tenant scoped', async () => {

@@ -134,12 +134,8 @@ exports.generateProformaInvoicePDF = async (order, tenantId, res) => {
     const footerConfig = template?.footer_config || {};
     const brandingConfig = template?.branding_config || {};
 
-    // ── Fetch active tax rate ──
-    let taxRate = 0;
-    try {
-      const activeTax = await Tax.findOne({ where: { tenant_id: tenantId, is_active: true } });
-      if (activeTax) taxRate = parseFloat(activeTax.rate) || 0;
-    } catch (e) { /* no tax */ }
+    const financials = await require('./salesOrderPricing').totals(order, tenantId);
+    const taxRate = financials.tax_rate;
 
     // ── Resolve logo path ──
     const logoPath = configMap.app_logo
@@ -273,8 +269,8 @@ exports.generateProformaInvoicePDF = async (order, tenantId, res) => {
 
     drawMetaRow('Reference No:', order.order_number || '—');
     drawMetaRow('Date:', new Date(order.order_date).toLocaleDateString('en-GB'));
-    drawMetaRow('Due Date:', new Date(order.order_date).toLocaleDateString('en-GB'));
-    drawMetaRow('Terms:', 'Due on receipt');
+    if (order.payment_terms == null) drawMetaRow('Due Date:', new Date(order.order_date).toLocaleDateString('en-GB'));
+    drawMetaRow('Terms:', order.payment_terms == null ? 'Due on receipt' : order.payment_terms ? 'See below' : 'Not specified');
 
     // ═══════════════════════════════════════════
     // TABLE SECTION
@@ -361,8 +357,8 @@ exports.generateProformaInvoicePDF = async (order, tenantId, res) => {
     const totalsW = 220;
     let totalsY = currentY + 14;
 
-    const vatAmount = subtotal * (taxRate / 100);
-    const grandTotal = subtotal + vatAmount;
+    const vatAmount = financials.tax_amount;
+    const grandTotal = financials.total;
 
     const drawTotalRow = (label, value, isBold, isHighlight) => {
       if (isHighlight) {
@@ -380,7 +376,8 @@ exports.generateProformaInvoicePDF = async (order, tenantId, res) => {
       }
     };
 
-    drawTotalRow('Subtotal:', subtotal.toFixed(2), false, false);
+    drawTotalRow('Subtotal:', financials.subtotal.toFixed(2), false, false);
+    if (financials.discount > 0) drawTotalRow('Discount:', `-${financials.discount.toFixed(2)}`, false, false);
     if (taxRate > 0) {
       drawTotalRow(`VAT (${taxRate}%):`, vatAmount.toFixed(2), false, false);
     }
@@ -394,44 +391,25 @@ exports.generateProformaInvoicePDF = async (order, tenantId, res) => {
     // ═══════════════════════════════════════════
     // BANK DETAILS (bottom left)
     // ═══════════════════════════════════════════
-    const bankY = Math.max(totalsY + 20, currentY + 80);
-
-    if (footerConfig.bankDetails) {
-      doc.font('Helvetica-Bold').fontSize(9).fillColor(primaryColor)
-         .text('Bank Transfer Details', marginLeft, bankY);
-
-      doc.moveTo(marginLeft, bankY + 14)
-         .lineTo(marginLeft + 180, bankY + 14)
-         .strokeColor(primaryColor).lineWidth(0.5).stroke();
-
-      doc.font('Helvetica').fontSize(8.5).fillColor(textDark);
-      const bankLines = footerConfig.bankDetails.split('\\n');
-      let bankLineY = bankY + 20;
-      bankLines.forEach(line => {
-        doc.text(line.trim(), marginLeft, bankLineY);
-        bankLineY += 13;
-      });
+    // Flow saved document sections below totals, reserving footer space.
+    const sections = require('./salesOrderDocument').sections(order, footerConfig);
+    doc.page.margins.bottom = 90;
+    doc.on('pageAdded', () => { doc.page.margins.bottom = 90; });
+    let documentY = totalsY + 20;
+    for (const section of sections) {
+      if (documentY + 45 > doc.page.height - 90) { doc.addPage(); documentY = doc.page.margins.top; }
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(primaryColor).text(section.title, marginLeft, documentY, { width: contentWidth });
+      doc.moveDown(0.5);
+      doc.font('Helvetica').fontSize(8.5).fillColor(textDark).text(section.text, marginLeft, doc.y, { width: contentWidth });
+      documentY = doc.y + 18;
     }
-
-    // ═══════════════════════════════════════════
-    // FOOTER (terms & conditions)
-    // ═══════════════════════════════════════════
-    // Temporarily disable bottom margin to prevent automatic page break for the footer
+    if (documentY > doc.page.height - 85) doc.addPage();
     doc.page.margins.bottom = 0;
-
     const footerY = doc.page.height - 70;
-
-    doc.moveTo(marginLeft, footerY)
-       .lineTo(rightColX, footerY)
-       .strokeColor(borderColor).lineWidth(0.5).stroke();
-
-    doc.font('Helvetica').fontSize(7.5).fillColor(textMuted);
-    const terms = footerConfig.termsConditions || 'This is a Proforma Invoice. Not a request for payment.';
-    doc.text(terms, marginLeft, footerY + 8, { width: contentWidth, align: 'center' });
-
-    doc.text('Thank you for your business!', marginLeft, footerY + 22, {
-      width: contentWidth, align: 'center'
-    });
+    doc.moveTo(marginLeft, footerY).lineTo(rightColX, footerY).strokeColor(borderColor).lineWidth(0.5).stroke();
+    doc.font('Helvetica').fontSize(7.5).fillColor(textMuted)
+      .text('This is a Proforma Invoice. Not a request for payment.', marginLeft, footerY + 8, { width: contentWidth, align: 'center' })
+      .text('Thank you for your business!', marginLeft, footerY + 22, { width: contentWidth, align: 'center' });
 
     doc.end();
 };

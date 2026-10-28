@@ -3,7 +3,7 @@ const {Op}=require('sequelize');
 const {internalRead}=require('../utils/recordAccess');
 const {actionScope,canRecord}=require('../utils/permissionRules');
 const {styles,renderDocument}=require('../utils/documentTemplates');
-const fail=message=>{throw Object.assign(new Error(message),{status:400});};
+const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const text=(value,max=5000)=>{if(value==null)return null;if(typeof value!=='string' || value.length>max)fail(`Text must be no more than ${max} characters.`);return value.trim() || null;};
 const amount=(value,max=999999999)=>{const number=Number(value??0);if(!Number.isFinite(number) || number<0 || number>max)fail('Enter a valid positive amount.');return Math.round(number*100)/100;};
 function date(value,required=false){if(!value && !required)return null;if(typeof value!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(new Date(value).getTime()) || new Date(value).toISOString().slice(0,10)!==value)fail('Choose a valid date.');return value;}
@@ -48,12 +48,20 @@ async function prepare(input,user,existing,transaction){
   return {quotation_date,valid_until,lead_id:lead?.id || null,customer_id:customer?.id || null,recipient_name,contact_person:text(input.contact_person,150),email:text(input.email,100),phone:text(input.phone,30),address:text(input.address,2000),customer_reference:text(input.customer_reference,150),branch:text(input.branch,150),assigned_user_id,items,subtotal,discount,tax_rate,tax_amount,total,template_style,document_footer:existing?.document_footer ?? defaults.footer ?? '',...extras(input)};
 }
 const respond=(res,error)=>res.status(error.status || (error.name==='SequelizeUniqueConstraintError'?409:400)).json({success:false,message:error.message});
+exports.salesOrderDraft=async(req,res)=>{try{res.json({success:true,data:await require('../utils/quotationOrder').seed(req.params.id,req.user)});}catch(error){respond(res,error);}};
+exports.saveSalesOrder=async(req,res)=>{try{res.status(201).json({success:true,data:await require('../utils/quotationOrder').save(req.params.id,req.body,req.user)});}catch(error){respond(res,error);}};
 exports.list=async(req,res)=>{try{
   const where={tenant_id:req.user.tenant_id};
   if(req.query.lead_id!==undefined){if(!/^[1-9]\d*$/.test(String(req.query.lead_id)))fail('Choose a valid lead.');where.lead_id=req.query.lead_id;}
   const rows=await db.Quotation.findAll({where,order:[['id','DESC']]});res.json({success:true,data:rows});
 }catch(error){respond(res,error);}};
-exports.detail=async(req,res)=>{try{const row=await db.Quotation.findOne({where:{id:req.params.id,tenant_id:req.user.tenant_id}});if(!row)return res.status(404).json({success:false,message:'Quotation not found.'});res.json({success:true,data:row});}catch(error){respond(res,error);}};
+exports.detail=async(req,res)=>{try{
+  const row=await db.Quotation.findOne({where:{id:req.params.id,tenant_id:req.user.tenant_id}});
+  if(!row)return res.status(404).json({success:false,message:'Quotation not found.'});
+  // Only the assigned staff display name is needed in this document view.
+  const staff=row.assigned_user_id?await internalRead(()=>db.User.findOne({where:{id:row.assigned_user_id,tenant_id:req.user.tenant_id},attributes:['id','name']})):null;
+  res.json({success:true,data:{...row.toJSON(),assigned_staff:staff?{id:staff.id,name:staff.name}:null}});
+}catch(error){respond(res,error);}};
 exports.options=async(req,res)=>{try{
   const [customers,leads,services,staff,defaults]=await Promise.all([
     can(req.user,'customers')?db.Customer.findAll({where:{tenant_id:req.user.tenant_id,is_active:true},attributes:['id','name','email','phone_whatsapp','address','pricing_category','created_by','assigned_user_id']}):[],
@@ -73,6 +81,7 @@ exports.create=async(req,res)=>{try{const row=await db.sequelize.transaction(asy
 });res.status(201).json({success:true,data:publicRow(req.user,row)});}catch(error){respond(res,error);}};
 exports.update=async(req,res)=>{try{const row=await db.sequelize.transaction(async transaction=>{
   const row=await db.Quotation.findOne({where:{id:req.params.id,tenant_id:req.user.tenant_id},transaction,lock:transaction.LOCK.UPDATE});if(!row)throw Object.assign(new Error('Quotation not found.'),{status:404});
+  if(row.sales_order_id || row.status==='SO')fail('Converted quotations are locked. Open the linked sales order.',409);
   if(row.status==='Accepted')fail('Accepted quotations are locked. Duplicate the quotation to make a new offer.');
   const data=await prepare(req.body,req.user,row,transaction);await row.update({...data,status:'Draft',sent_at:null},{transaction});return row;
 });res.json({success:true,data:publicRow(req.user,row)});}catch(error){respond(res,error);}};

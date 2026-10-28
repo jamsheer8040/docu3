@@ -7,7 +7,7 @@
           FINANCIAL MANAGEMENT
         </div>
         <h1 class="text-h4 font-weight-black color-primary">
-          Expenses &amp; Salary Management
+          {{ canReadSalary ? (canReadExpenses ? 'Expenses & Salary Management' : 'Salary & Payroll Management') : 'Expenses' }}
         </h1>
         <p class="text-subtitle-1 text-grey-darken-1 mt-1">
           Monitor operational costs, vendor invoices, and manage monthly staff salary payroll in one unified hub.
@@ -42,9 +42,9 @@
     </v-row>
 
     <!-- Top 4 Summary KPI Cards Row (Operational vs Salary vs Combined) -->
-    <v-row class="mb-6">
+    <v-row v-if="activeTab === 'operational'" class="mb-6">
       <!-- Card 1: Combined Total Expenses -->
-      <v-col cols="12" sm="6" md="3">
+      <v-col v-if="canReadSalary" cols="12" sm="6" md="3">
         <v-card class="pa-5 soft-card d-flex align-center gap-4" height="100%" variant="flat" rounded="xl">
           <div class="pa-3 rounded-xl d-flex align-center justify-center" style="background: rgba(79, 66, 148, 0.1); color: #4F4294; min-width: 48px; height: 48px;">
             <v-icon size="default">mdi-receipt-text-outline</v-icon>
@@ -62,7 +62,7 @@
       </v-col>
 
       <!-- Card 2: Operational Expenses Total -->
-      <v-col cols="12" sm="6" md="3">
+      <v-col v-if="canReadExpenses" cols="12" sm="6" md="3">
         <v-card class="pa-5 soft-card d-flex align-center gap-4" height="100%" variant="flat" rounded="xl">
           <div class="pa-3 rounded-xl d-flex align-center justify-center" style="background: rgba(2, 136, 209, 0.1); color: #0288D1; min-width: 48px; height: 48px;">
             <v-icon size="default">mdi-office-building-outline</v-icon>
@@ -70,17 +70,17 @@
           <div>
             <div class="text-caption font-weight-bold opacity-60 text-uppercase mb-1">Operational OpEx</div>
             <div class="text-h5 font-weight-black color-primary mb-1">
-              AED {{ (salaryStore.summary.operational?.total || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+              AED {{ operationalTotals.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
             </div>
             <div class="text-caption font-weight-medium text-grey-darken-1">
-              Paid: AED {{ (salaryStore.summary.operational?.paid || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }} &bull; Due: <strong class="text-error">AED {{ (salaryStore.summary.operational?.pending || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</strong>
+              Paid: AED {{ operationalTotals.paid.toLocaleString('en-US', { minimumFractionDigits: 2 }) }} &bull; Due: <strong class="text-error">AED {{ operationalTotals.pending.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</strong>
             </div>
           </div>
         </v-card>
       </v-col>
 
       <!-- Card 3: Staff Salary Total -->
-      <v-col cols="12" sm="6" md="3">
+      <v-col v-if="canReadSalary" cols="12" sm="6" md="3">
         <v-card class="pa-5 soft-card d-flex align-center gap-4" height="100%" variant="flat" rounded="xl">
           <div class="pa-3 rounded-xl d-flex align-center justify-center" style="background: rgba(46, 125, 50, 0.1); color: #2E7D32; min-width: 48px; height: 48px;">
             <v-icon size="default">mdi-account-cash-outline</v-icon>
@@ -98,7 +98,7 @@
       </v-col>
 
       <!-- Card 4: Total Pending Liabilities -->
-      <v-col cols="12" sm="6" md="3">
+      <v-col v-if="canReadSalary" cols="12" sm="6" md="3">
         <v-card class="pa-5 soft-card d-flex align-center gap-4" height="100%" variant="flat" rounded="xl">
           <div class="pa-3 rounded-xl d-flex align-center justify-center" style="background: rgba(198, 40, 40, 0.1); color: #C62828; min-width: 48px; height: 48px;">
             <v-icon size="default">mdi-clock-alert-outline</v-icon>
@@ -125,14 +125,14 @@
       grow
       style="background: #FFFFFF; border-radius: 16px; border: 1px solid rgba(79, 66, 148, 0.12); padding: 4px;"
     >
-      <v-tab value="operational" class="font-weight-bold text-capitalize px-6 rounded-xl" height="46">
+      <v-tab v-if="canReadExpenses" value="operational" class="font-weight-bold text-capitalize px-6 rounded-xl" height="46">
         <v-icon start>mdi-office-building-outline</v-icon>
-        Operational Expenses
+        Expenses
         <v-chip size="x-small" color="primary" class="ml-2 font-weight-bold" variant="tonal">
           {{ expenseStore.totalItems }}
         </v-chip>
       </v-tab>
-      <v-tab value="salary" class="font-weight-bold text-capitalize px-6 rounded-xl" height="46">
+      <v-tab v-if="canReadSalary" value="salary" class="font-weight-bold text-capitalize px-6 rounded-xl" height="46">
         <v-icon start>mdi-account-cash-outline</v-icon>
         Salary &amp; Payroll Management
         <v-chip
@@ -149,7 +149,7 @@
     <!-- Tab Contents Window -->
     <v-window v-model="activeTab">
       <!-- TAB 1: OPERATIONAL EXPENSES -->
-      <v-window-item value="operational">
+      <v-window-item v-if="canReadExpenses" value="operational">
         <!-- Expenses Table Card Container -->
         <v-card class="soft-card overflow-hidden pa-4" variant="flat" rounded="xl">
           <!-- Filter Bar Header Inside Card -->
@@ -171,6 +171,16 @@
 
             <!-- Filter Dropdowns & Controls -->
             <div class="d-flex align-center gap-3 flex-wrap">
+              <v-select
+                v-model="expenseTypeFilter"
+                :items="expenseTypeOptions"
+                label="Expense type"
+                hide-details
+                density="compact"
+                variant="outlined"
+                rounded="lg"
+                style="width: 180px;"
+              ></v-select>
               <v-select
                 v-model="statusFilter"
                 :items="['All', 'Paid', 'Unpaid', 'Partially Paid']"
@@ -218,7 +228,10 @@
             <!-- Description -->
             <template v-slot:item.description="{ item }">
               <div class="py-1">
-                <div class="font-weight-bold text-body-2 color-on-surface">{{ item.description || 'General Expense' }}</div>
+                <div v-if="item.expense_kind === 'salary'" class="font-weight-bold text-body-2 color-on-surface">
+                  Salary · {{ formatPayrollMonth(item.payroll_month) }} — {{ item.staff_name }}
+                </div>
+                <div v-else class="font-weight-bold text-body-2 color-on-surface">{{ item.description || 'General Expense' }}</div>
                 <div v-if="item.supplier_name" class="text-caption text-grey-darken-1 opacity-70">
                   Supplier: {{ item.supplier_name }}
                 </div>
@@ -229,7 +242,7 @@
             <template v-slot:item.category="{ item }">
               <div class="d-flex flex-column gap-1 align-start">
                 <v-chip size="x-small" variant="tonal" color="primary" class="font-weight-bold px-2 rounded-pill" style="height: 20px;">
-                  {{ item.SubType?.ParentType?.type_name || 'Uncategorized' }}
+                  {{ item.expense_kind === 'salary' ? 'Salary' : item.SubType?.ParentType?.type_name || 'Uncategorized' }}
                 </v-chip>
                 <div v-if="item.SubType" class="text-caption opacity-60">
                   {{ item.SubType.sub_type_name }}
@@ -245,6 +258,9 @@
             </template>
 
             <!-- Pending -->
+            <template v-slot:item.paid_amount="{ item }">
+              AED {{ Number(item.paid_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+            </template>
             <template v-slot:item.pending="{ item }">
               <span :class="parseFloat(item.amount) - parseFloat(item.paid_amount) > 0 ? 'text-error font-weight-bold text-body-2' : 'text-success font-weight-bold text-body-2'">
                 AED {{ (parseFloat(item.amount) - parseFloat(item.paid_amount)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
@@ -267,7 +283,8 @@
 
             <!-- Actions -->
             <template v-slot:item.actions="{ item }">
-              <v-menu location="bottom end">
+              <v-btn v-if="item.expense_kind === 'salary'" variant="text" size="small" color="primary" @click="openSalaryExpense(item)">View Payroll</v-btn>
+              <v-menu v-else location="bottom end">
                 <template v-slot:activator="{ props }">
                   <v-btn icon="mdi-dots-horizontal" variant="text" size="small" color="grey-darken-1" v-bind="props"></v-btn>
                 </template>
@@ -304,7 +321,7 @@
       </v-window-item>
 
       <!-- TAB 2: SALARY & PAYROLL MANAGEMENT -->
-      <v-window-item value="salary">
+      <v-window-item v-if="canReadSalary" value="salary">
         <SalaryPayrollTab />
       </v-window-item>
     </v-window>
@@ -312,7 +329,7 @@
     <!-- Dialogs -->
     <v-dialog v-model="expenseDialog" max-width="700px" persistent>
       <ExpenseDialog 
-        v-if="expenseDialog"
+        v-if="canReadExpenses && expenseDialog"
         :expense="selectedExpense"
         @save="onExpenseSaved"
         @cancel="expenseDialog = false"
@@ -321,7 +338,7 @@
 
     <v-dialog v-model="payDialog" max-width="450px" persistent>
       <MarkPaidDialog
-        v-if="payDialog"
+        v-if="canReadExpenses && payDialog"
         :expense="selectedExpense"
         :accounts="walletStore.accounts"
         :loading="expenseStore.loading"
@@ -332,7 +349,7 @@
 
     <!-- Settings Dialog -->
     <ExpenseSettingsDialog 
-      v-if="settingsDialog"
+      v-if="canReadExpenses && settingsDialog"
       v-model="settingsDialog" 
       @saved="onSettingsSaved" 
     />
@@ -347,6 +364,7 @@ import { useExpenseStore } from '~/stores/expenses';
 import { useWalletStore } from '~/stores/wallet';
 import { useSalaryStore } from '~/stores/salary';
 import { useAuthStore } from '~/stores/auth';
+import { canAccessSalary } from '~/utils/recordPermissions';
 import ExpenseDialog from '~/components/expenses/ExpenseDialog.vue';
 import MarkPaidDialog from '~/components/expenses/MarkPaidDialog.vue';
 import ExpenseSettingsDialog from '~/components/expenses/ExpenseSettingsDialog.vue';
@@ -359,9 +377,25 @@ const expenseStore = useExpenseStore();
 const walletStore = useWalletStore();
 const salaryStore = useSalaryStore();
 const auth = useAuthStore();
+const canReadSalary = computed(() => canAccessSalary(auth.user));
+const canReadExpenses = computed(() => auth.can('expenses','read'));
+const operationalTotals = computed(() => {
+  if (canReadSalary.value) return salaryStore.summary.operational || {total:0,paid:0,pending:0};
+  const total=Number(expenseStore.totalSpent || 0),paid=Number(expenseStore.totalPaid || 0);
+  return {total,paid,pending:Math.max(0,total-paid)};
+});
 
 // Tab state (support ?tab=salary or ?tab=operational)
-const activeTab = ref(route.query.tab === 'salary' ? 'salary' : 'operational');
+const activeTab = ref(canReadSalary.value && (route.query.tab === 'salary' || !canReadExpenses.value) ? 'salary' : 'operational');
+watch([canReadSalary,canReadExpenses], () => {
+  if (activeTab.value === 'salary' && !canReadSalary.value) activeTab.value = 'operational';
+  if (activeTab.value === 'operational' && !canReadExpenses.value && canReadSalary.value) activeTab.value = 'salary';
+});
+const salaryPageReady=ref(false);
+watch(() => JSON.stringify([auth.user?.id,auth.user?.tenant_id,auth.user?.role,auth.user?.role_type,auth.user?.permissions]), () => {
+  salaryStore.clearSalaryView();
+  if(salaryPageReady.value && canReadSalary.value)salaryStore.fetchMonthPayroll();
+}, {immediate:true});
 
 watch(activeTab, (newTab) => {
   router.replace({ query: { ...route.query, tab: newTab } });
@@ -371,6 +405,12 @@ watch(activeTab, (newTab) => {
 const search = ref('');
 const statusFilter = ref('All');
 const categoryFilter = ref('All');
+const expenseTypeFilter = ref('all');
+const expenseTypeOptions = [
+  { title: 'All expenses', value: 'all' },
+  { title: 'Operational', value: 'operational' },
+  { title: 'Salary', value: 'salary' }
+];
 const expenseDialog = ref(false);
 const payDialog = ref(false);
 const settingsDialog = ref(false);
@@ -395,41 +435,56 @@ const headers = [
   { title: 'DESCRIPTION', key: 'description' },
   { title: 'CATEGORY', key: 'category' },
   { title: 'AMOUNT (AED)', key: 'amount', align: 'end' },
-  { title: 'PENDING', key: 'pending', align: 'end' },
+  { title: 'PAID (AED)', key: 'paid_amount', align: 'end' },
+  { title: 'BALANCE', key: 'pending', align: 'end' },
   { title: 'STATUS', key: 'status', align: 'center' },
   { title: 'ACTIONS', key: 'actions', sortable: false, align: 'end' },
 ];
 
 onMounted(async () => {
+  salaryPageReady.value=true;
   await Promise.all([
-    walletStore.fetchAccounts(),
-    salaryStore.fetchSummary(),
-    salaryStore.fetchMonthPayroll()
+    auth.can('wallet','read') ? walletStore.fetchAccounts() : Promise.resolve(),
+    canReadSalary.value ? salaryStore.fetchMonthPayroll() : Promise.resolve()
   ]);
 });
 
 const loadExpenses = async ({ page, itemsPerPage: limit }) => {
+  if (!canReadExpenses.value) return;
   currentPage.value = page;
   itemsPerPage.value = limit;
 
   await expenseStore.fetchExpenses({
     page,
     limit,
+    expense_kind: expenseTypeFilter.value,
     status: statusFilter.value === 'All' ? undefined : statusFilter.value,
     category: categoryFilter.value === 'All' ? undefined : categoryFilter.value,
     search: search.value || undefined
   });
   // Also refresh overall summary
-  await salaryStore.fetchSummary();
+  if (canReadSalary.value) await salaryStore.fetchSummary();
 };
 
 let searchTimer;
-watch([statusFilter, categoryFilter, search], () => {
+watch([statusFilter, categoryFilter, expenseTypeFilter, search], () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
     loadExpenses({ page: 1, itemsPerPage: itemsPerPage.value });
   }, 400);
 });
+
+// Refresh the linked expense after booking, paying or cancelling in Salary.
+watch(activeTab, (tab) => {
+  if (tab === 'operational') loadExpenses({ page: currentPage.value, itemsPerPage: itemsPerPage.value });
+});
+
+const formatPayrollMonth = (month) => month ? new Date(`${month}-01T12:00:00+04:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'Asia/Dubai' }) : '';
+const openSalaryExpense = async (expense) => {
+  if (!canReadSalary.value || !expense.payroll_month) return;
+  activeTab.value = 'salary';
+  await salaryStore.fetchMonthPayroll(expense.payroll_month);
+};
 
 const openAddDialog = () => {
   selectedExpense.value = null;
@@ -464,7 +519,7 @@ const onPaymentSubmit = async (data) => {
 const confirmDelete = async (expense) => {
   if (confirm(`Delete expense: ${expense.description}?`)) {
     await expenseStore.deleteExpense(expense.id);
-    await salaryStore.fetchSummary();
+    if (canReadSalary.value) await salaryStore.fetchSummary();
   }
 };
 

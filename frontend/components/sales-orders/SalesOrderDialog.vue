@@ -12,21 +12,28 @@
         <v-form ref="form" v-model="valid">
           <h3 class="text-h6 font-weight-bold mb-4">Header Information</h3>
           <v-row>
-            <v-col cols="12" md="6">
-              <label class="text-caption font-weight-bold text-slate-700 mb-1 ml-1 d-block">Customer *</label>
+            <v-col v-if="!isConvertingQuotation" cols="12" md="6">
+              <label class="text-caption font-weight-bold text-slate-700 mb-1 ml-1 d-block">{{ orderToEdit?.source_quotation_id ? 'Linked Customer' : 'Customer *' }}</label>
               <v-autocomplete
                 v-model="formData.customer_id"
                 :items="customers"
                 item-title="name"
                 item-value="id"
-                :rules="[v => !!v || 'Customer is required']"
-                :disabled="isEditMode"
+                :rules="[v => !!v || !!(quotationSeed || orderToEdit?.source_quotation_id) || 'Customer is required']"
+                :disabled="isEditMode && orderToEdit?.confirmation_status !== 'Unconfirmed'"
+                clearable
                 variant="outlined"
                 density="comfortable"
                 class="mb-2 soft-input"
                 bg-color="transparent"
                 placeholder="Search customer..."
               ></v-autocomplete>
+            </v-col>
+            <v-col v-else cols="12" md="6">
+              <div class="text-caption font-weight-bold mb-2">Quotation Recipient</div>
+              <div class="font-weight-bold text-body-1">{{ formData.recipient_snapshot.name }}</div>
+              <p class="text-body-2 text-medium-emphasis mt-1">{{ [formData.recipient_snapshot.phone, formData.recipient_snapshot.email].filter(Boolean).join(' · ') }}</p>
+              <p v-if="formData.recipient_snapshot.address" class="text-body-2 text-medium-emphasis mt-1">{{ formData.recipient_snapshot.address }}</p>
             </v-col>
             <v-col cols="12" md="6">
               <label class="text-caption font-weight-bold text-slate-700 mb-1 ml-1 d-block">Contact Person</label>
@@ -70,6 +77,31 @@
               ></v-textarea>
             </v-col>
           </v-row>
+          <v-alert v-if="isConvertingQuotation || orderToEdit?.confirmation_status === 'Unconfirmed'" variant="tonal" type="info" class="mb-4">{{ quotationSeed?.source_quotation_number || 'Converted quotation' }} · Save as Unconfirmed. Expected dates are optional.</v-alert>
+          <v-row v-if="isEditMode && orderToEdit?.source_quotation_id && !formData.customer_id">
+            <v-col cols="12" md="6"><v-text-field v-model="formData.recipient_snapshot.name" label="Customer / Company Name" variant="outlined" /></v-col>
+            <v-col cols="12" md="6"><v-text-field v-model="formData.recipient_snapshot.phone" label="Phone / WhatsApp" variant="outlined" /></v-col>
+            <v-col cols="12" md="6"><v-text-field v-model="formData.recipient_snapshot.email" label="Email" variant="outlined" /></v-col>
+            <v-col cols="12" md="6"><v-text-field v-model="formData.recipient_snapshot.address" label="Address" variant="outlined" /></v-col>
+          </v-row>
+          <v-textarea v-if="quotationSeed || orderToEdit?.source_quotation_id" v-model="formData.notes" label="Customer-facing Notes" rows="2" variant="outlined" />
+          <v-expansion-panels class="my-5" multiple :model-value="[0,1]">
+            <v-expansion-panel>
+              <v-expansion-panel-title>Bank Account Details</v-expansion-panel-title>
+              <v-expansion-panel-text><v-row>
+                <v-col v-for="field in bankFields" :key="field.key" cols="12" md="6">
+                  <v-text-field v-model="formData.bank_details[field.key]" :label="field.label" maxlength="150" variant="outlined" @update:model-value="documentTouched = true" />
+                </v-col>
+              </v-row></v-expansion-panel-text>
+            </v-expansion-panel>
+            <v-expansion-panel>
+              <v-expansion-panel-title>Payment Terms &amp; Terms and Conditions</v-expansion-panel-title>
+              <v-expansion-panel-text>
+                <v-textarea v-model="formData.payment_terms" label="Payment Terms" rows="3" maxlength="5000" variant="outlined" @update:model-value="documentTouched = true" />
+                <v-textarea v-model="formData.terms" label="Terms and Conditions" rows="5" maxlength="5000" variant="outlined" @update:model-value="documentTouched = true" />
+              </v-expansion-panel-text>
+            </v-expansion-panel>
+          </v-expansion-panels>
 
           <v-divider class="my-6"></v-divider>
 
@@ -103,7 +135,8 @@
             <tbody>
               <tr v-for="(item, index) in formData.items" :key="index">
                 <td class="pa-2">
-                  <v-autocomplete
+                  <v-text-field v-if="!item.service_type_id && item.service_name && (quotationSeed || orderToEdit?.source_quotation_id)" v-model="item.service_name" variant="outlined" density="compact" hide-details />
+                  <v-autocomplete v-else
                     v-model="item.service_type_id"
                     :items="serviceTypes"
                     item-title="name"
@@ -205,7 +238,7 @@
                     <template v-slot:activator="{ props: menuProps }">
                       <v-text-field
                         v-bind="menuProps"
-                        :model-value="item.expected_processing_time"
+                        :model-value="item.expected_date"
                         readonly
                         append-inner-icon="mdi-calendar"
                         variant="outlined"
@@ -215,6 +248,8 @@
                         hide-details
                         style="width: 140px"
                         placeholder="Select Date"
+                        clearable
+                        @click:clear="item.expected_date = null"
                       ></v-text-field>
                     </template>
                     <v-date-picker
@@ -223,6 +258,7 @@
                       @update:modelValue="(val) => onDateSelected(val, index)"
                     ></v-date-picker>
                   </v-menu>
+                  <p v-if="item.expected_processing_time && !/^\d{4}-\d{2}-\d{2}$/.test(item.expected_processing_time)" class="text-caption mt-1">{{ item.expected_processing_time }}</p>
                 </td>
                 <td class="pa-2 text-center">
                   <v-tooltip v-if="item.is_locked" text="Action processed (cannot delete)" location="top">
@@ -238,13 +274,22 @@
           <div v-if="formData.items.length === 0" class="text-center pa-4 text-secondary border rounded-lg bg-surface opacity-60">
             No services added yet. Click "Add Service" above.
           </div>
+          <v-row class="mt-4" justify="end">
+            <v-col cols="12" md="5">
+              <div class="d-flex justify-space-between mb-4"><span>Subtotal</span><strong>AED {{ pricing.subtotal.toFixed(2) }}</strong></div>
+              <v-text-field v-model.number="formData.discount" label="Discount (AED)" type="number" min="0" step="0.01" variant="outlined" :rules="[discountRule]" />
+              <v-text-field v-model.number="formData.tax_rate" label="VAT %" type="number" min="0" max="100" step="0.01" variant="outlined" :rules="[taxRateRule]" @update:model-value="vatTouched = true" />
+              <div class="d-flex justify-space-between mb-4"><span>VAT after discount</span><strong>AED {{ pricing.tax_amount.toFixed(2) }}</strong></div>
+              <div class="d-flex justify-space-between text-h6"><span>Total</span><strong>AED {{ pricing.total.toFixed(2) }}</strong></div>
+            </v-col>
+          </v-row>
         </v-form>
       </v-card-text>
 
       <v-card-actions class="pa-6 border-t bg-surface">
         <v-spacer></v-spacer>
         <v-btn variant="text" color="secondary" size="large" @click="$emit('update:modelValue', false)" class="mr-2">Cancel</v-btn>
-        <v-btn class="btn-standard px-6" size="large" @click="save" :loading="saving" :disabled="templateBusy || !valid || formData.items.length === 0">
+        <v-btn class="btn-standard px-6" size="large" @click="save" :loading="saving" :disabled="pricingDefaultsLoading || (pricingDefaultsError && !vatTouched) || templateBusy || !valid || formData.items.length === 0">
           {{ isEditMode ? 'Update Sales Order' : 'Save Sales Order' }}
         </v-btn>
       </v-card-actions>
@@ -278,10 +323,12 @@ const props = defineProps({
   orderToEdit: {
     type: Object,
     default: null
-  }
+  },
+  quotationSeed: { type: Object, default: null }
 })
 
 const isEditMode = computed(() => !!props.orderToEdit?.id)
+const isConvertingQuotation = computed(() => !!props.quotationSeed && !isEditMode.value)
 
 const emit = defineEmits(['update:modelValue', 'saved'])
 const { $api } = useNuxtApp()
@@ -291,12 +338,16 @@ const valid = ref(false)
 const saving = ref(false)
 const templateBusy = ref(false)
 const menuState = ref({})
+const vatTouched = ref(false), pricingDefaultsLoading = ref(false), pricingDefaultsError = ref(false)
+const documentTouched = ref(false)
+const bankFields = [{key:'bank_name',label:'Bank Name'},{key:'account_name',label:'Account Holder Name'},{key:'account_number',label:'Account Number'},{key:'iban',label:'IBAN'},{key:'swift',label:'SWIFT / BIC'},{key:'branch',label:'Bank Branch'}]
+let defaultsRequest = 0
 
 const onDateSelected = (val, index) => {
   if (val) {
     const d = new Date(val)
     const dateString = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-    formData.items[index].expected_processing_time = dateString
+    formData.items[index].expected_date = dateString
     menuState.value[index] = false
   }
 }
@@ -311,6 +362,7 @@ const defaultItem = () => ({
   estimated_price: 0,
   priority: 'Normal',
   expected_processing_time: '',
+  expected_date: null,
   is_locked: false
 })
 
@@ -320,17 +372,48 @@ const formData = reactive({
   customer_reference: '',
   branch: '',
   internal_remarks: '',
+  discount: 0,
+  tax_rate: 0,
+  bank_details: {},
+  payment_terms: '',
+  terms: '',
+  recipient_snapshot: {},
+  notes: '',
+  sales_executive_id: null,
   items: []
 })
+const pricing = computed(() => {
+  const subtotalCents = formData.items.reduce((sum, item) => sum + Math.round(Number(item.estimated_price || 0) * 100) * Number(item.quantity || 1), 0)
+  const taxable = Math.max(0, subtotalCents - Math.round(Number(formData.discount || 0) * 100))
+  const rate = Math.round(Number(formData.tax_rate || 0) * 100)
+  const taxCents = Number.isSafeInteger(taxable) && Number.isSafeInteger(rate) && taxable >= 0 && rate >= 0 ? Number((BigInt(taxable) * BigInt(rate) + 5000n) / 10000n) : 0
+  return { subtotal: subtotalCents / 100, tax_amount: taxCents / 100, total: (taxable + taxCents) / 100 }
+})
+const amountValid = value => ['number', 'string'].includes(typeof value) && /^\d+(\.\d{1,2})?$/.test(String(value)) && Number.isFinite(Number(value))
+const discountRule = value => amountValid(value) && Number(value) <= pricing.value.subtotal || 'Enter a valid discount no greater than the subtotal'
+const taxRateRule = value => amountValid(value) && Number(value) <= 100 || 'Enter VAT from 0 to 100, with at most two decimals'
 
 watch(() => props.modelValue, (val) => {
+  const request = ++defaultsRequest
+  pricingDefaultsLoading.value = false
   if (val) {
+    vatTouched.value = false
+    documentTouched.value = false
+    pricingDefaultsError.value = false
     if (props.orderToEdit) {
       formData.customer_id = props.orderToEdit.customer_id
       formData.contact_person = props.orderToEdit.contact_person || ''
       formData.customer_reference = props.orderToEdit.customer_reference || ''
       formData.branch = props.orderToEdit.branch || ''
       formData.internal_remarks = props.orderToEdit.internal_remarks || ''
+      formData.discount = Number(props.orderToEdit.discount || 0)
+      formData.tax_rate = Number(props.orderToEdit.tax_rate || 0)
+      formData.bank_details = { ...(props.orderToEdit.bank_details || {}) }
+      formData.payment_terms = props.orderToEdit.payment_terms || ''
+      formData.terms = props.orderToEdit.terms || ''
+      formData.recipient_snapshot = { ...(props.orderToEdit.recipient_snapshot || {}) }
+      formData.notes = props.orderToEdit.notes || ''
+      formData.sales_executive_id = props.orderToEdit.sales_executive_id || null
       formData.items = (props.orderToEdit.SalesOrderItems || []).map(i => ({
         id: i.id,
         service_type_id: i.service_type_id,
@@ -342,6 +425,7 @@ watch(() => props.modelValue, (val) => {
         estimated_price: Number(i.estimated_price) || 0,
         priority: i.priority || 'Normal',
         expected_processing_time: i.expected_processing_time || '',
+        expected_date: i.expected_date || (/^\d{4}-\d{2}-\d{2}$/.test(i.expected_processing_time || '') ? i.expected_processing_time : null),
         status: i.status,
         confirmed: i.confirmed,
         service_order_id: i.service_order_id,
@@ -350,12 +434,37 @@ watch(() => props.modelValue, (val) => {
       if (formData.items.length === 0) {
         formData.items = [defaultItem()]
       }
+    } else if (props.quotationSeed) {
+      Object.assign(formData, JSON.parse(JSON.stringify(props.quotationSeed)))
+      formData.items = props.quotationSeed.items.map(item => ({ ...defaultItem(), ...item }))
     } else {
       formData.customer_id = props.initialCustomerId || null
       formData.contact_person = ''
       formData.customer_reference = ''
       formData.branch = ''
       formData.internal_remarks = ''
+      formData.discount = 0
+      formData.tax_rate = 0
+      formData.bank_details = {}
+      formData.payment_terms = ''
+      formData.terms = ''
+      formData.recipient_snapshot = {}
+      formData.notes = ''
+      formData.sales_executive_id = null
+      pricingDefaultsLoading.value = true
+      $api.get('/sales-orders/pricing-defaults').then(response => {
+        if (request === defaultsRequest && props.modelValue && !props.orderToEdit && !vatTouched.value) formData.tax_rate = Number(response.data.data?.tax_rate || 0)
+        if (request === defaultsRequest && props.modelValue && !props.orderToEdit && !documentTouched.value) {
+          const defaults = response.data.data?.document_defaults || {}
+          formData.bank_details = { ...(defaults.bank_details || {}) }
+          formData.payment_terms = defaults.payment_terms || ''
+          formData.terms = defaults.terms || ''
+        }
+      }).catch(() => {
+        if (request !== defaultsRequest) return
+        pricingDefaultsError.value = true
+        uiStore.showError('Unable to load the VAT default. Enter the VAT rate before saving.')
+      }).finally(() => { if (request === defaultsRequest) pricingDefaultsLoading.value = false })
       formData.items = [defaultItem()]
     }
     if (form.value) form.value.resetValidation()
@@ -404,14 +513,14 @@ const onServiceTypeSelect = (id, index) => {
 }
 
 const save = async () => {
-  if (saving.value || templateBusy.value) return
+  if (saving.value || templateBusy.value || pricingDefaultsLoading.value || (pricingDefaultsError.value && !vatTouched.value)) return
   const { valid: isValid } = await form.value.validate()
   if (!isValid) return
 
   // Validate items
   for (let i = 0; i < formData.items.length; i++) {
     const item = formData.items[i]
-    if (!item.service_type_id || !item.service_name) {
+    if ((!item.service_type_id && !(props.quotationSeed || props.orderToEdit?.source_quotation_id)) || !item.service_name) {
       uiStore.showError(`Please select a service type for item #${i + 1}`)
       return
     }
@@ -420,13 +529,18 @@ const save = async () => {
   saving.value = true
   try {
     if (isEditMode.value) {
-      await $api.put(`/sales-orders/${props.orderToEdit.id}`, formData)
+      const response = await $api.put(`/sales-orders/${props.orderToEdit.id}`, formData)
+      emit('saved', response.data.data)
       uiStore.showSuccess('Sales Order updated successfully')
+    } else if (props.quotationSeed) {
+      const response = await $api.post(`/quotations/${props.quotationSeed.source_quotation_id}/sales-order`, formData)
+      emit('saved', response.data.data)
+      uiStore.showSuccess('Sales order saved as Unconfirmed. Quotation status is SO.')
     } else {
-      await $api.post('/sales-orders', formData)
+      const response = await $api.post('/sales-orders', formData)
+      emit('saved', response.data.data)
       uiStore.showSuccess('Sales Order created successfully')
     }
-    emit('saved')
     emit('update:modelValue', false)
   } catch (err) {
     console.error(err)

@@ -9,7 +9,7 @@ const summaryFields = new Set(('id tenant_id created_by assigned_user_id name ti
 function moduleFor(name) {
   return roots[name] || (children[name] && moduleFor(children[name][0]));
 }
-for (const field of ['quotation_number','quotation_date','valid_until','recipient_name','lead_id','lead_type','quote_sent','sent_at','template_style']) summaryFields.add(field);
+for (const field of ['quotation_number','quotation_date','valid_until','recipient_name','lead_id','lead_type','quote_sent','sent_at','template_style','expense_id']) summaryFields.add(field);
 function actionFor(module, operation = 'read') {
   const state = context.getStore();
   if (operation !== 'read') return operation;

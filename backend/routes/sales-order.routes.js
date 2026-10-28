@@ -11,8 +11,10 @@ const { requirePermission } = require('../middleware/auth.middleware');
 // Sales Order Routes
 router.get('/', requirePermission('sales_orders', 'read'), salesOrderController.getAllSalesOrders);
 router.post('/', requirePermission('sales_orders', 'write'), salesOrderController.createSalesOrder);
+router.get('/pricing-defaults', requirePermission('sales_orders', 'read'), salesOrderController.getPricingDefaults);
 router.get('/:id', requirePermission('sales_orders', 'read'), salesOrderController.getSalesOrderById);
 router.put('/:id', requirePermission('sales_orders', 'write'), salesOrderController.updateSalesOrder);
+router.post('/:id/confirmation', requirePermission('sales_orders', 'write'), salesOrderController.confirmOrder);
 router.delete('/:id', requirePermission('sales_orders', 'write'), salesOrderController.deleteSalesOrder);
 
 // Push Service Item to Execution

@@ -53,6 +53,12 @@ async function initializeDatabase() {
     await sequelize.authenticate();
     await sequelize.sync({ alter: false });
     await require('./utils/commissionApprovalSchema')(sequelize);
+    await require('./utils/salaryAccountingSchema')(sequelize);
+    await require('./utils/salesOrderPricingSchema')(sequelize);
+    await require('./utils/salesOrderDocumentSchema')(sequelize);
+    await require('./utils/quotationOrderSchema')(sequelize);
+    await require('./utils/salaryCalculationSchema')(sequelize);
+    await require('./utils/salaryReversalSchema')(sequelize);
     await require('./utils/dashboardTemplateSchema')(sequelize);
     await require('./utils/leadTypeSchema')(sequelize);
     await require('./utils/leadFollowUpSchema')(sequelize);

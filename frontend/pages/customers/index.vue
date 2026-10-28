@@ -119,6 +119,7 @@
         :items="customers"
         :items-length="totalItems"
         :loading="loading"
+        :row-props="customerRowProps"
         @update:options="loadCustomers"
         class="bg-transparent elevation-0 custom-customer-table"
         hover
@@ -129,9 +130,10 @@
             <v-avatar color="rgba(79, 66, 148, 0.1)" size="36" class="mr-3 text-primary font-weight-black">
               {{ item.name.charAt(0).toUpperCase() }}
             </v-avatar>
-            <div class="font-weight-bold text-body-2 color-on-surface clickable-name text-truncate" style="max-width: 220px;" @click="viewCustomer(item.id)">
+            <NuxtLink v-if="auth.canRecord('customers', 'detail', item)" :to="`/customers/${item.id}`" class="font-weight-bold text-body-2 color-on-surface text-truncate text-decoration-none" style="max-width: 220px;" @click.stop>
               {{ item.name }}
-            </div>
+            </NuxtLink>
+            <span v-else class="font-weight-bold text-body-2 color-on-surface text-truncate" style="max-width: 220px;">{{ item.name }}</span>
           </div>
         </template>
 
@@ -167,8 +169,8 @@
 
         <!-- Actions -->
         <template v-slot:item.actions="{ item }">
-          <div class="d-flex justify-end gap-1 align-center">
-            <v-btn icon="mdi-eye-outline" variant="text" size="small" color="grey-darken-1" title="View Profile" @click="viewCustomer(item.id)"></v-btn>
+          <div class="d-flex justify-end gap-1 align-center" @click.stop>
+            <v-btn v-if="auth.canRecord('customers', 'detail', item)" icon="mdi-eye-outline" variant="text" size="small" color="grey-darken-1" title="View Profile" @click="viewCustomer(item.id)"></v-btn>
             <v-btn icon="mdi-whatsapp" variant="text" size="small" color="success" title="WhatsApp Message" @click.stop="openWhatsApp(item.phone_whatsapp, GENERAL_MSG)"></v-btn>
             <v-btn icon="mdi-email-outline" variant="text" size="small" color="primary" title="Send Email" @click.stop="openSendEmail(item)"></v-btn>
             <v-menu v-if="auth.canRecord('customers', 'edit_form', item) || auth.canRecord('customers', 'delete', item)" location="bottom end">
@@ -372,6 +374,17 @@ const openEditDialog = (item) => {
 
 const viewCustomer = (id) => {
   router.push(`/customers/${id}`);
+};
+
+const customerRowProps = ({ item }) => {
+  if (!auth.canRecord('customers', 'detail', item)) return {};
+  return {
+    class: 'cursor-pointer',
+    onClick: (event) => {
+      if (event.target.closest('a, button, input, select, textarea, [role="button"], [role="menuitem"]')) return;
+      viewCustomer(item.id);
+    }
+  };
 };
 
 const onSaved = () => {

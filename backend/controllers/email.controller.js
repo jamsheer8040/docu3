@@ -160,14 +160,27 @@ exports.saveSmtpSettings = async (req, res) => {
   try {
     const tenantId = req.user.tenant_id;
     const allowedKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from_name', 'smtp_from_email', 'smtp_secure', 'email_auto_invoice', 'email_auto_document_reminder'];
+    const { email } = require('../utils/documentReminderEmail');
+    const input = req.body || {};
+    if (input.smtp_host != null && (typeof input.smtp_host !== 'string' || !/^[a-zA-Z0-9.-]+$/.test(input.smtp_host.trim()))) return res.status(400).json({ success: false, message: 'Enter a valid SMTP hostname.' });
+    if (input.smtp_port != null && (!/^\d+$/.test(String(input.smtp_port)) || Number(input.smtp_port) < 1 || Number(input.smtp_port) > 65535)) return res.status(400).json({ success: false, message: 'Enter a valid SMTP port.' });
+    if (input.smtp_from_email != null && (typeof input.smtp_from_email !== 'string' || (input.smtp_from_email.trim() && !email(input.smtp_from_email.trim())))) return res.status(400).json({ success: false, message: 'Enter a valid From email address.' });
+    if (['smtp_user', 'smtp_from_name'].some(key => input[key] != null && (typeof input[key] !== 'string' || input[key].length > 250 || /[\r\n]/.test(input[key])))) return res.status(400).json({ success: false, message: 'Enter a valid sender name and SMTP username.' });
+    if (input.smtp_pass != null && (typeof input.smtp_pass !== 'string' || input.smtp_pass.length > 1000)) return res.status(400).json({ success: false, message: 'Enter a valid SMTP password.' });
+    if (['smtp_secure', 'email_auto_invoice', 'email_auto_document_reminder'].some(key => input[key] != null && !['true', 'false', true, false].includes(input[key]))) return res.status(400).json({ success: false, message: 'Invalid email option.' });
 
+    await SystemConfig.sequelize.transaction(async transaction => {
     for (const key of allowedKeys) {
-      if (req.body[key] !== undefined) {
+      if (input[key] !== undefined) {
         // Don't overwrite masked password
-        if (key === 'smtp_pass' && req.body[key] === '••••••••') continue;
-        await SystemConfig.upsert({ key, value: String(req.body[key]), tenant_id: tenantId });
+        if (key === 'smtp_pass' && input[key] === '••••••••') continue;
+        let value = String(input[key]);
+        if (['smtp_host', 'smtp_user', 'smtp_from_email', 'smtp_from_name'].includes(key)) value = value.trim();
+        if (key === 'smtp_pass' && input.smtp_host?.trim().toLowerCase() === 'smtp.gmail.com') value = value.replace(/\s/g, '');
+        await SystemConfig.upsert({ key, value, tenant_id: tenantId }, { transaction });
       }
     }
+    });
 
     res.json({ success: true, message: 'SMTP settings saved' });
   } catch (err) {

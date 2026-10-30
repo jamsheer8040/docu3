@@ -680,6 +680,7 @@
                      Changes to the **Business Name** will reflect immediately on all newly generated PDF invoices.
                   </p>
                </v-card>
+               <CompanyBackup />
             </v-col>
          </v-row>
       </v-window-item>
@@ -1152,6 +1153,7 @@
 import DashboardTemplateSettings from '~/components/settings/DashboardTemplateSettings.vue';
 import ServiceBundleSettings from '~/components/settings/ServiceBundleSettings.vue';
 import CommissionMasterSwitch from '~/components/settings/CommissionMasterSwitch.vue';
+import CompanyBackup from '~/components/settings/CompanyBackup.vue';
 import DashboardTemplateChoice from '~/components/settings/DashboardTemplateChoice.vue';
 import RoleDashboardAssignment from '~/components/settings/RoleDashboardAssignment.vue';
 import { businessModules, rulesFor as permissionRulesFor } from '~/utils/recordPermissions';
@@ -1185,6 +1187,8 @@ const tabs = [
   { value: 'voucher-design', title: 'Document Templates', icon: 'mdi-file-document-multiple-outline' },
   { value: 'email', title: 'Email', icon: 'mdi-email-cog' }
 ]
+const settingsRoute = useRoute();
+watch(() => settingsRoute.query.tab, value => { if (tabs.some(tab => tab.value === value)) activeTab.value = value; }, { immediate: true });
 const auth = useAuthStore();
 const { formatCurrency } = useCurrency();
 const serviceStore = useServiceStore();

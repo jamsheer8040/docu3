@@ -9,5 +9,6 @@ dist/
 mysql_data/
 uploads/
 backend/backups/*.sql
+backend/backups/companies/
 backups/*.sql
 backend/.commission-*.cjs

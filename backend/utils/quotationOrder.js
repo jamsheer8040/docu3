@@ -71,6 +71,14 @@ async function confirmation(id,action,user){
   const desired=action==='confirm'?'Confirmed':'Cancelled';if(order.confirmation_status===desired)return order;
   if(order.confirmation_status!=='Unconfirmed')fail('Only unconfirmed sales orders can be confirmed or cancelled.',409);
   if(action==='cancel'){await order.update({confirmation_status:'Cancelled'},{transaction});return order;}
+  return activateForItem(order,user,transaction);
+ });
+}
+// Called inside the item transaction: first confirmation links the customer,
+// without confirming or starting any sibling service items.
+async function activateForItem(order,user,transaction){
+  if(order.confirmation_status==='Cancelled')fail('Cancelled sales orders cannot be confirmed.',409);
+  if(order.confirmation_status==='Confirmed')return order;
   const lead=order.lead_id?await internalRead(()=>db.Lead.findOne({where:{id:order.lead_id,tenant_id:user.tenant_id},transaction,lock:transaction.LOCK.UPDATE})):null;
   let customer_id=order.customer_id||lead?.customer_id;
   if(order.customer_id&&lead?.customer_id&&String(order.customer_id)!==String(lead.customer_id))fail('The lead is linked to a different customer. Review the customer mapping before confirming.',409);
@@ -87,6 +95,5 @@ async function confirmation(id,action,user){
   }
   if(lead&&!lead.customer_id)await lead.update({customer_id,converted_at:new Date(),converted_by:user.id},{transaction});
   await order.update({customer_id,confirmation_status:'Confirmed'},{transaction});return order;
- });
 }
-module.exports={seed,save,confirmation,date,recipient};
+module.exports={seed,save,confirmation,activateForItem,date,recipient};

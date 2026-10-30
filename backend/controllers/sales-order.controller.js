@@ -46,36 +46,36 @@ exports.getAllSalesOrders = async (req, res) => {
 exports.confirmServiceItem = async (req, res) => {
   try {
     const { action, notes } = req.body;
-    const itemId = req.params.itemId;
-
-    const item = await SalesOrderItem.findOne({
-      where: { id: itemId, tenant_id: req.user.tenant_id }
-    });
-
-    if (!item) {
-      return res.status(404).json({ success: false, message: 'Service Item not found' });
-    }
-
-    const parent=await SalesOrder.findOne({where:{id:item.sales_order_id,tenant_id:req.user.tenant_id}});
-    if(!parent||parent.confirmation_status!=='Confirmed')return res.status(409).json({success:false,message:'Confirm the sales order before changing service confirmation.'});
-    if (action === 'confirm') {
-      item.confirmed = true;
-      item.confirm_notes = notes || null;
-      if (req.file) {
-        item.confirm_attachment = `/uploads/documents/${req.file.filename}`;
+    const fail=(message,status=409)=>{throw Object.assign(new Error(message),{status});};
+    if(!['confirm','cancel'].includes(action))return res.status(400).json({success:false,message:'Invalid action'});
+    await sequelize.transaction(async transaction=>{
+      await require('../models').Tenant.findByPk(req.user.tenant_id,{transaction,lock:transaction.LOCK.UPDATE});
+      const item=await SalesOrderItem.findOne({where:{id:req.params.itemId,tenant_id:req.user.tenant_id},transaction,lock:transaction.LOCK.UPDATE});
+      if(!item)fail('Service Item not found',404);
+      const parent=await SalesOrder.findOne({where:{id:item.sales_order_id,tenant_id:req.user.tenant_id},transaction,lock:transaction.LOCK.UPDATE});
+      if(!parent)fail('Sales Order not found',404);
+      if(req.user.Role?.type!=='Internal'||!require('../utils/permissionRules').canRecord(req.user,'sales_orders','edit',parent))fail('Sales Order edit permission is required.',403);
+      if(parent.confirmation_status==='Cancelled')fail('This sales order is cancelled.');
+      if(item.service_order_id)fail('A started service cannot be confirmed or cancelled here.');
+      if(action==='confirm'){
+        if(item.cancelled)fail('This service item is already cancelled.');
+        if(item.confirmed)return;
+        await require('../utils/quotationOrder').activateForItem(parent,req.user,transaction);
+        item.confirmed=true;item.confirm_notes=notes||null;
+        if(req.file)item.confirm_attachment=`/uploads/documents/${req.file.filename}`;
+      }else{
+        if(item.confirmed)fail('This service item is already confirmed.');
+        if(item.cancelled)return;
+        item.cancelled=true;item.cancel_notes=notes||null;
       }
-    } else if (action === 'cancel') {
-      item.cancelled = true;
-      item.cancel_notes = notes || null;
-    } else {
-      return res.status(400).json({ success: false, message: 'Invalid action' });
-    }
-
-    await item.save();
+      await item.save({transaction});
+      const siblings=await require('../utils/recordAccess').internalRead(()=>SalesOrderItem.findAll({where:{sales_order_id:parent.id,tenant_id:req.user.tenant_id},attributes:['cancelled'],transaction}));
+      if(siblings.length&&siblings.every(row=>row.cancelled))await parent.update({confirmation_status:'Cancelled'},{transaction});
+    });
     res.json({ success: true, message: `Service successfully ${action}ed` });
   } catch (error) {
     console.error('[SalesOrderController] Error confirming service:', error);
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(error.status||500).json({ success: false, message: error.status?error.message:'Server error' });
   }
 };
 
@@ -227,7 +227,7 @@ exports.pushService = async (req, res) => {
     }
 
     // Create ServiceOrder
-    if(item.SalesOrder.confirmation_status!=='Confirmed')throw Object.assign(new Error('Confirm the sales order before starting services.'),{status:409});
+    if(item.SalesOrder.confirmation_status==='Cancelled'||!item.confirmed||item.cancelled||!item.SalesOrder.customer_id)throw Object.assign(new Error('Confirm this service item before starting it.'),{status:409});
     const serviceOrder = await ServiceOrder.create({
       customer_id: item.SalesOrder.customer_id,
       service_type_id: item.service_type_id,

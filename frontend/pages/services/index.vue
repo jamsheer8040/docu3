@@ -126,6 +126,7 @@
       </div>
     </v-card>
 
+    <v-chip v-if="serviceRoute.query.service_id" closable color="primary" variant="tonal" class="mb-3" @click:close="serviceRouter.replace({ query: { ...serviceRoute.query, service_id: undefined } })">Service #{{ serviceRoute.query.service_id }}</v-chip>
     <v-window v-model="viewMode">
 
       <!-- ============================
@@ -169,15 +170,7 @@
                     </div>
 
                     <!-- Invoice Badge -->
-                    <v-chip
-                      v-if="hasInvoice(order)"
-                      color="success"
-                      size="x-small"
-                      prepend-icon="mdi-receipt-check"
-                      variant="tonal"
-                      class="font-weight-bold mb-2 cursor-pointer"
-                      @click.stop="openInvoiceView(order.Invoice)"
-                    >{{ order.Invoice?.invoice_number }}</v-chip>
+                    <ServiceInvoiceBadge v-if="hasInvoice(order)" :invoice="order.Invoice" class="mb-2" @open="openInvoiceView" />
                     <v-chip
                       v-else
                       color="orange"
@@ -245,15 +238,7 @@
                     </div>
 
                     <!-- Invoice Badge -->
-                    <v-chip
-                      v-if="hasInvoice(order)"
-                      color="success"
-                      size="x-small"
-                      prepend-icon="mdi-receipt-check"
-                      variant="tonal"
-                      class="font-weight-bold mb-2 cursor-pointer"
-                      @click.stop="openInvoiceView(order.Invoice)"
-                    >{{ order.Invoice?.invoice_number }}</v-chip>
+                    <ServiceInvoiceBadge v-if="hasInvoice(order)" :invoice="order.Invoice" class="mb-2" @open="openInvoiceView" />
                     <v-chip
                       v-else
                       color="orange"
@@ -317,13 +302,15 @@
                     </div>
 
                     <!-- Invoice Badge -->
+                    <ServiceInvoiceBadge v-if="hasInvoice(order)" :invoice="order.Invoice" class="mb-2" @open="openInvoiceView" />
                     <v-chip
-                      :color="hasInvoice(order) ? 'success' : 'orange'"
+                      v-else
+                      color="orange"
                       size="x-small"
-                      :prepend-icon="hasInvoice(order) ? 'mdi-receipt-check' : 'mdi-receipt-outline'"
+                      prepend-icon="mdi-receipt-outline"
                       variant="tonal"
                       class="font-weight-bold mb-2"
-                    >{{ hasInvoice(order) ? 'Invoice Created' : 'Invoice Pending' }}</v-chip>
+                    >Invoice Pending</v-chip>
 
                     <div class="text-caption text-grey mb-2">
                       <v-icon size="x-small" icon="mdi-check-all" color="success" class="mr-1"></v-icon>
@@ -376,15 +363,7 @@
                     </div>
 
                     <!-- Invoice Badge -->
-                    <v-chip
-                      v-if="hasInvoice(order)"
-                      color="success"
-                      size="x-small"
-                      prepend-icon="mdi-receipt-check"
-                      variant="tonal"
-                      class="font-weight-bold mb-2 cursor-pointer"
-                      @click.stop="openInvoiceView(order.Invoice)"
-                    >{{ order.Invoice?.invoice_number }}</v-chip>
+                    <ServiceInvoiceBadge v-if="hasInvoice(order)" :invoice="order.Invoice" class="mb-2" @open="openInvoiceView" />
                     <v-chip
                       v-else
                       color="orange"
@@ -425,6 +404,7 @@
                       <div v-if="order.completed_at">Completed: {{ formatDate(order.completed_at) }}</div>
                     </div>
 
+                    <ServiceInvoiceBadge v-if="hasInvoice(order)" :invoice="order.Invoice" class="mb-2" @open="openInvoiceView" />
                     <div class="service-card-footer d-flex justify-center mt-2 pt-2 border-t" :style="footerStyle('FollowUpRequired')">
                       <v-btn
                         v-if="auth.canRecord('services', 'edit', order)"
@@ -460,6 +440,7 @@
                       <div>Created: {{ formatDate(order.created_at) }}</div>
                     </div>
 
+                    <ServiceInvoiceBadge v-if="hasInvoice(order)" :invoice="order.Invoice" class="mb-2" @open="openInvoiceView" />
                     <div class="service-card-footer d-flex justify-end mt-2 pt-2 border-t" :style="footerStyle('Cancelled')">
                       <v-btn v-if="auth.canRecord('services', 'edit', order)" variant="text" size="x-small" prepend-icon="mdi-restore" @click.stop="updateStatus(order, 'Pending')">Restore</v-btn>
                     </div>
@@ -502,15 +483,7 @@
 
             <!-- Invoice Badge column -->
             <template v-slot:item.invoice_badge="{ item }">
-              <v-chip
-                v-if="hasInvoice(item)"
-                color="success"
-                size="x-small"
-                prepend-icon="mdi-receipt-check"
-                variant="tonal"
-                class="font-weight-bold cursor-pointer"
-                @click="openInvoiceView(item.Invoice)"
-              >{{ item.Invoice?.invoice_number }}</v-chip>
+              <ServiceInvoiceBadge v-if="hasInvoice(item)" :invoice="item.Invoice" @open="openInvoiceView" />
               <v-chip
                 v-else
                 color="orange"
@@ -523,20 +496,11 @@
 
             <template #item.AssignedStaff.name="{ item }">{{ item.AssignedStaff?.name || 'Unassigned' }}</template>
             <template v-slot:item.status="{ item }">
-              <v-chip :color="getStatusColor(item.status)" size="x-small" label class="font-weight-bold">
+              <v-chip :color="getStatusColor(item.status)" size="x-small" label class="font-weight-bold" style="font-size: 10px !important;">
                 <template v-if="item.status === 'CompletedInvoicePending'">✓ - Invoice Pending</template>
                 <template v-else-if="item.status === 'CompletedInvoiceCreated'">✓ - Invoice Created</template>
                 <template v-else>{{ item.status }}</template>
               </v-chip>
-              <div v-if="item.status === 'CompletedInvoiceCreated' && hasInvoice(item)" class="mt-1">
-                <span 
-                  class="text-caption text-primary font-weight-black cursor-pointer text-decoration-underline d-inline-flex align-center"
-                  @click="openInvoiceView(item.Invoice)"
-                >
-                  <v-icon size="x-small" icon="mdi-receipt-text-outline" class="mr-1"></v-icon>
-                  {{ item.Invoice?.invoice_number }}
-                </span>
-              </div>
             </template>
 
             <template v-slot:item.actions="{ item }">
@@ -787,11 +751,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { useServiceStore } from '~/stores/services';
 import { useAuthStore } from '~/stores/auth';
 import ServiceOrderForm from '~/components/services/ServiceOrderForm.vue';
 import ServiceStaffAvatar from '~/components/services/ServiceStaffAvatar.vue';
+import ServiceInvoiceBadge from '~/components/services/ServiceInvoiceBadge.vue';
+import { refreshServiceInvoiceBadges } from '~/utils/serviceInvoice.mjs';
 import ServiceSettingsDialog from '~/components/services/ServiceSettingsDialog.vue';
 import {serviceFooterColors} from '~/utils/serviceAppearance';
 import ConfirmDialog from '~/components/common/ConfirmDialog.vue';
@@ -809,7 +775,9 @@ const walletStore = useWalletStore();
 const { openWhatsApp } = useWhatsApp();
 
 // ─── UI State ─────────────────────────────────────────────────────────────────
-const viewMode = ref('kanban');
+const serviceRoute = useRoute();
+const serviceRouter = useRouter();
+const viewMode = ref(serviceRoute.query.service_id ? 'list' : 'kanban');
 const searchOrders = ref(String(useRoute().query.search || ''));
 const staffFilter = ref('all');
 const staffFilterOptions = computed(() => [{ title: 'All staff', value: 'all' }, { title: 'Unassigned', value: 'unassigned' }, { title: 'Assigned to me', value: String(auth.user?.id) }, ...Array.from(new Map(serviceStore.serviceOrders.filter(order => order.AssignedStaff).map(order => [String(order.assigned_user_id), { title: order.AssignedStaff.name, value: String(order.assigned_user_id) }])).values()).filter(user => user.value !== String(auth.user?.id))]);
@@ -921,6 +889,7 @@ const fetchData = async () => {
   }
 
   const params = {};
+  if (serviceRoute.query.service_id) params.service_id = serviceRoute.query.service_id;
   if (criticalityFilter.value !== 'All') {
     params.criticality = criticalityFilter.value;
   }
@@ -941,9 +910,40 @@ onMounted(async () => {
   fetchData();
   fetchSuppliers();
 });
+watch(() => serviceRoute.query.service_id, () => { if (serviceRoute.query.service_id) viewMode.value = 'list'; fetchData(); });
 
 watch([sortBy, criticalityFilter], () => {
   fetchData();
+});
+
+// Refresh only invoice badges, without replacing service workflow data or filters.
+let badgeRefreshTimer, badgeRefreshRunning = false, badgeRefreshActive = false;
+const refreshInvoiceBadges = async () => {
+  if (!badgeRefreshActive || document.hidden || badgeRefreshRunning || serviceStore.loading || !auth.can('services', 'read') || !serviceStore.serviceOrders.some(hasInvoice)) return;
+  const actor = auth.user, filter = criticalityFilter.value, sort = sortBy.value;
+  badgeRefreshRunning = true;
+  try {
+    const { data } = await $api.get('/services/orders', { params: {
+      ...(filter !== 'All' ? { criticality: filter } : {}),
+      ...(sort === 'criticality' ? { sort } : {}), limit: 200
+    } });
+    if (badgeRefreshActive && auth.user === actor && auth.can('services', 'read') && filter === criticalityFilter.value && sort === sortBy.value && data.success) {
+      serviceStore.serviceOrders = refreshServiceInvoiceBadges(serviceStore.serviceOrders, data.data);
+    }
+  } catch (error) { console.debug('Invoice badge refresh will retry.', error); }
+  finally { badgeRefreshRunning = false; }
+};
+onMounted(() => {
+  badgeRefreshActive = true;
+  window.addEventListener('focus', refreshInvoiceBadges);
+  document.addEventListener('visibilitychange', refreshInvoiceBadges);
+  badgeRefreshTimer = window.setInterval(refreshInvoiceBadges, 30000);
+});
+onBeforeUnmount(() => {
+  badgeRefreshActive = false;
+  window.clearInterval(badgeRefreshTimer);
+  window.removeEventListener('focus', refreshInvoiceBadges);
+  document.removeEventListener('visibilitychange', refreshInvoiceBadges);
 });
 
 // ─── Actions ──────────────────────────────────────────────────────────────────

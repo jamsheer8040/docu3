@@ -172,7 +172,7 @@
           <div class="d-flex justify-end gap-1 align-center" @click.stop>
             <v-btn v-if="auth.canRecord('customers', 'detail', item)" icon="mdi-eye-outline" variant="text" size="small" color="grey-darken-1" title="View Profile" @click="viewCustomer(item.id)"></v-btn>
             <v-btn icon="mdi-whatsapp" variant="text" size="small" color="success" title="WhatsApp Message" @click.stop="openWhatsApp(item.phone_whatsapp, GENERAL_MSG)"></v-btn>
-            <v-btn icon="mdi-email-outline" variant="text" size="small" color="primary" title="Send Email" @click.stop="openSendEmail(item)"></v-btn>
+            <v-btn v-if="auth.canRecord('customers', 'edit_form', item) && auth.user?.role_type !== 'CustomerPortal'" icon="mdi-email-outline" variant="text" size="small" color="primary" title="Send Email" @click.stop="openSendEmail(item)"></v-btn>
             <v-menu v-if="auth.canRecord('customers', 'edit_form', item) || auth.canRecord('customers', 'delete', item)" location="bottom end">
                <template v-slot:activator="{ props }">
                  <v-btn v-bind="props" icon="mdi-dots-horizontal" variant="text" size="small" color="grey-darken-1"></v-btn>

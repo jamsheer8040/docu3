@@ -381,6 +381,7 @@ app.use('/api/v1/expenses', expenseRoutes);
 app.use('/api/v1/expense-types', expenseTypeRoutes);
 app.use('/api/v1/expense-sub-types', expenseSubTypeRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
+app.use('/api/v1/search', require('./routes/search.routes'));
 app.use('/api/v1/reports', reportsRoutes);
 app.use('/api/v1/document-types', documentTypeRoutes);
 app.use('/api/v1/config', configRoutes);

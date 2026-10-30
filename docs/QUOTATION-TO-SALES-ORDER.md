@@ -28,18 +28,21 @@ editable under its existing permission rules, with order edits and confirmation
 serialized against the tenant lock.
 
 For a lead/prospect, the draft retains a recipient snapshot without creating a
-customer. Confirmation reuses the mapped customer, or creates a customer with
+customer. The first service item confirmation reuses the mapped customer, or creates a customer with
 the order's salesperson and links the lead while retaining lead history.
 Customer creation and lead linking require their respective permissions. A
 matching existing phone/email requires choosing that existing customer rather
 than silently creating a duplicate. The draft can be edited to complete missing
 customer contact information before confirmation.
 
+Both manual and quotation-based orders expose Confirm and Cancel on each pending
+service row immediately. There is no order-level confirmation prerequisite.
 Confirming is repeat-safe and does not start services, create invoices or move
-money. Unconfirmed/cancelled orders cannot confirm or push service lines.
-Cancelling retains the order and quotation SO reference without creating a
-customer. Converted orders cannot be deleted; their source link is audit history.
-Confirmed orders continue through the normal per-service workflow.
+money. Only the selected item is confirmed; siblings remain unchanged. A service
+must be individually confirmed before it can be pushed to execution. Cancelling
+all items marks the order Cancelled without creating a customer. Converted orders
+cannot be deleted; their source link remains audit history. The header displays
+confirmation progress calculated from the actual items, including partial progress.
 
 The repeatable startup helper and migration 20261028010000 add nullable source
 and recipient fields, optional expected dates, SO quotation status and an order

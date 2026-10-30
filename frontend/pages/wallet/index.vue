@@ -257,13 +257,19 @@
 
     <!-- Ledger Section -->
     <v-card class="border rounded-2xl" border>
-      <v-toolbar color="surface" flat border-b class="px-4">
+      <v-toolbar color="surface" flat border-b class="px-4 ledger-toolbar">
           <v-icon icon="mdi-format-list-bulleted" color="primary" class="mr-3"></v-icon>
           <span class="text-h6 font-weight-bold">Detailed Financial Ledger</span>
-          <v-chip v-if="accountFilter" size="small" closable @click:close="clearAccountFilter" color="primary" variant="tonal" class="ml-3">
-            Filtered
-          </v-chip>
           <v-spacer></v-spacer>
+          <v-select
+            v-model="accountFilter"
+            :items="ledgerWalletOptions"
+            label="Wallet"
+            variant="outlined"
+            density="compact"
+            hide-details
+            class="ledger-wallet-filter"
+          ></v-select>
           <v-text-field
             v-model="search"
             prepend-inner-icon="mdi-magnify"
@@ -277,6 +283,7 @@
       </v-toolbar>
 
       <v-data-table-server
+        v-model:page="ledgerPage"
         v-model:items-per-page="itemsPerPage"
         :headers="headers"
         :items="walletStore.transactions"
@@ -524,6 +531,11 @@ const snackbarMessage = ref('');
 const search = ref('');
 const itemsPerPage = ref(10);
 const accountFilter = ref(null);
+const ledgerPage = ref(1);
+const ledgerWalletOptions = computed(() => [
+  { title: 'All wallets', value: null },
+  ...walletStore.accounts.map(account => ({ title: account.name, value: account.id }))
+]);
 
 const walletDialog = ref(false);
 const editingWallet = ref(null);
@@ -623,18 +635,14 @@ const loadTransactions = ({ page, itemsPerPage }) => {
   });
 };
 
-watch(search, () => {
-    loadTransactions({ page: 1, itemsPerPage: itemsPerPage.value });
+watch([search, accountFilter], () => {
+    // A page change triggers the table's options event; otherwise refresh directly.
+    if (ledgerPage.value !== 1) ledgerPage.value = 1;
+    else loadTransactions({ page: 1, itemsPerPage: itemsPerPage.value });
 });
 
 const filterByAccount = (id) => {
     accountFilter.value = id;
-    loadTransactions({ page: 1, itemsPerPage: itemsPerPage.value });
-};
-
-const clearAccountFilter = () => {
-    accountFilter.value = null;
-    loadTransactions({ page: 1, itemsPerPage: itemsPerPage.value });
 };
 
 const onTransferSuccess = () => {
@@ -759,6 +767,20 @@ const getReferenceRoute = (item) => {
 </script>
 
 <style scoped>
+.ledger-toolbar {
+  height: auto !important;
+}
+.ledger-toolbar :deep(.v-toolbar__content) {
+  height: auto !important;
+  min-height: 64px;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-block: 12px;
+}
+.ledger-wallet-filter {
+  flex: 0 1 220px;
+  min-width: 180px;
+}
 .max-width-300 {
   max-width: 300px;
 }

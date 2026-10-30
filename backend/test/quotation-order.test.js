@@ -46,8 +46,6 @@ test('concurrent Save creates one unconfirmed order and only then marks quotatio
 test('unconfirmed orders cannot start services and converted quotes cannot be edited',async()=>{
  const id=order.SalesOrderItems[0].id;
  assert.equal((await request(`/sales-orders/items/${id}/push`,'POST',{})).status,409);
- assert.equal((await request(`/sales-orders/items/${id}/confirm`,'POST',{action:'confirm'})).status,409);
- assert.equal((await request(`/sales-orders/items/${id}/confirm`,'POST',{action:'cancel'})).status,409);
  assert.equal((await request(`/quotations/${quote.id}`,'PUT',payload())).status,409);
  assert.equal((await request(`/sales-orders/${order.id}`,'DELETE')).status,409);
  assert.equal((await request(`/sales-orders/${order.id}`,'GET',undefined,portal)).status,404);
@@ -61,12 +59,32 @@ test('unconfirmed order PDFs use copied recipient, terms and prices without crea
  }
  assert.equal(await db.Customer.count({where:{tenant_id:1}}),1);
 });
-test('confirmation creates one customer, assigns the salesperson and links the original lead',async()=>{
- const results=await Promise.all([request(`/sales-orders/${order.id}/confirmation`,'POST',{action:'confirm'}),request(`/sales-orders/${order.id}/confirmation`,'POST',{action:'confirm'})]);
- assert.deepEqual(results.map(r=>r.status),[200,200]);assert.equal(String(results[0].data.customer_id),String(results[1].data.customer_id));
- const linked=await db.Customer.findByPk(results[0].data.customer_id);assert.equal(linked.assigned_user_id,salesman.id);assert.equal(linked.name,'Conversion company');
+test('first item confirmation creates one customer atomically and links the original lead',async()=>{
+ const results=await Promise.all([request(`/sales-orders/items/${order.SalesOrderItems[0].id}/confirm`,'POST',{action:'confirm'}),request(`/sales-orders/items/${order.SalesOrderItems[0].id}/confirm`,'POST',{action:'confirm'})]);
+ assert.deepEqual(results.map(r=>r.status),[200,200]);
+ const updated=await db.SalesOrder.findByPk(order.id);const linked=await db.Customer.findByPk(updated.customer_id);assert.equal(linked.assigned_user_id,salesman.id);assert.equal(linked.name,'Conversion company');
  await lead.reload();assert.equal(lead.customer_id,linked.id);assert.ok(lead.converted_at);assert.equal(await db.Customer.count({where:{tenant_id:1}}),2);
  assert.equal(await db.Invoice.count({where:{tenant_id:1}}),0);assert.equal(await db.Expense.count({where:{tenant_id:1}}),0);assert.equal(await db.ServiceOrder.count({where:{tenant_id:1}}),0);
+});
+test('manual and quotation orders both confirm or cancel individual items without changing siblings',async()=>{
+ const q=await create({customer_id:customer.id}),s=await draft(q);s.items.push({...s.items[0]});const converted=await save(q,s);
+ const manual=await request('/sales-orders','POST',{customer_id:customer.id,items:s.items,discount:0,tax_rate:0});assert.equal(manual.status,201,JSON.stringify(manual));
+ for(const target of [converted,manual.data]){
+  const items=await db.SalesOrderItem.findAll({where:{tenant_id:1,sales_order_id:target.id},order:[['id','ASC']]});assert.equal(items.length,2);
+  assert.equal((await request(`/sales-orders/items/${items[0].id}/confirm`,'POST',{action:'confirm'})).status,200);
+  await items[0].reload();await items[1].reload();assert.equal(items[0].confirmed,true);assert.equal(items[1].confirmed,false);assert.equal(items[1].cancelled,false);
+  assert.equal((await request(`/sales-orders/items/${items[1].id}/push`,'POST',{})).status,409);
+  assert.equal((await request(`/sales-orders/items/${items[0].id}/confirm`,'POST',{action:'cancel'})).status,409);
+  assert.equal((await request(`/sales-orders/items/${items[1].id}/confirm`,'POST',{action:'cancel'})).status,200);
+  await items[1].reload();assert.equal(items[1].cancelled,true);
+  assert.equal((await request(`/sales-orders/items/${items[1].id}/confirm`,'POST',{action:'confirm'})).status,409);
+ }
+ assert.equal(await db.ServiceOrder.count({where:{tenant_id:1}}),0);
+});
+test('cancelling every quotation item requires no customer creation',async()=>{
+ const q=await create({phone:'0507777777',email:'item-cancel@example.test'}),saved=await save(q,await draft(q));const before=await db.Customer.count({where:{tenant_id:1}});
+ assert.equal((await request(`/sales-orders/items/${saved.SalesOrderItems[0].id}/confirm`,'POST',{action:'cancel'})).status,200);
+ const updated=await db.SalesOrder.findByPk(saved.id);assert.equal(updated.confirmation_status,'Cancelled');assert.equal(updated.customer_id,null);assert.equal(await db.Customer.count({where:{tenant_id:1}}),before);
 });
 test('existing customers are reused and expected dates are optional and editable',async()=>{
  const q=await create({customer_id:customer.id}),s=await draft(q);s.items[0].expected_date='2026-11-15';const saved=await save(q,s);

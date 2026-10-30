@@ -77,7 +77,7 @@
               ></v-textarea>
             </v-col>
           </v-row>
-          <v-alert v-if="isConvertingQuotation || orderToEdit?.confirmation_status === 'Unconfirmed'" variant="tonal" type="info" class="mb-4">{{ quotationSeed?.source_quotation_number || 'Converted quotation' }} · Save as Unconfirmed. Expected dates are optional.</v-alert>
+          <v-alert v-if="isConvertingQuotation || orderToEdit?.confirmation_status === 'Unconfirmed'" variant="tonal" type="info" class="mb-4">{{ quotationSeed?.source_quotation_number || 'Converted quotation' }} · Confirm or cancel each service item after saving. Expected dates are optional.</v-alert>
           <v-row v-if="isEditMode && orderToEdit?.source_quotation_id && !formData.customer_id">
             <v-col cols="12" md="6"><v-text-field v-model="formData.recipient_snapshot.name" label="Customer / Company Name" variant="outlined" /></v-col>
             <v-col cols="12" md="6"><v-text-field v-model="formData.recipient_snapshot.phone" label="Phone / WhatsApp" variant="outlined" /></v-col>

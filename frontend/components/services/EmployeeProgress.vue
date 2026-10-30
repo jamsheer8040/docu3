@@ -1,16 +1,16 @@
 <template>
   <section aria-label="Employee progress and performance" class="mb-5">
     <div class="employee-grid">
-      <v-card v-for="employee in employeeCards" :key="employee.id" rounded="xl" variant="flat" class="pa-5">
-        <div class="card-heading"><button class="employee-name" @click="$emit('select', employee.id, '', employee.period)"><ServiceStaffAvatar :staff="employee.id === 'unassigned' ? null : employee" /><strong>{{ employee.name }}</strong><span v-if="!employee.is_active" class="text-caption">Inactive</span></button>
+      <v-card v-for="employee in employeeCards" :key="employee.id" rounded="xl" variant="flat" class="employee-card pa-3">
+        <div class="card-heading"><button class="employee-name" :title="employee.name" @click="$emit('select', employee.id, '', employee.period)"><ServiceStaffAvatar :staff="employee.id === 'unassigned' ? null : employee" /><strong>{{ employee.name }}</strong><span v-if="!employee.is_active" class="text-caption">Inactive</span></button>
         <TrackingPeriodSelect :model-value="employee.period" :label="`${employee.name} period`" compact @update:model-value="employeePeriods[employee.id] = $event" /></div>
-        <div class="text-caption text-medium-emphasis mt-2">{{ trackingPeriodLabel(employee.period) }}</div>
+        <div class="text-caption text-medium-emphasis mt-1">{{ trackingPeriodLabel(employee.period) }}</div>
         <p v-if="employee.unavailable" class="text-caption mt-4">{{ loading ? 'Loading…' : 'Data unavailable. Please refresh.' }}</p>
         <template v-else>
-        <div class="d-flex justify-space-between mt-5 mb-2 text-body-2"><span>Completed {{ employee.completed }} of {{ employee.total - employee.cancelled }}</span><strong>{{ percentage(employee) }}%</strong></div>
-        <v-progress-linear :model-value="percentage(employee)" height="8" rounded color="primary" :aria-label="`${employee.name}: ${percentage(employee)}% completed`" />
-        <div class="employee-counts mt-4"><button @click="$emit('select', employee.id, '', employee.period)"><strong>{{ employee.total }}</strong><span>Assigned</span></button><button @click="$emit('select', employee.id, 'In Progress', employee.period)"><strong>{{ employee.in_progress }}</strong><span>In progress</span></button><button @click="$emit('select', employee.id, 'completed', employee.period)"><strong>{{ employee.completed }}</strong><span>Completed</span></button></div>
-        <div v-if="employee.id !== 'unassigned'" class="performance-note mt-4 text-caption text-medium-emphasis">{{ employee.completed_in_period }} completed in period · Average {{ duration(employee.average_hours) }}</div>
+        <div class="d-flex justify-space-between mt-3 mb-1 text-body-2"><span>Completed {{ employee.completed }} of {{ employee.total - employee.cancelled }}</span><strong>{{ percentage(employee) }}%</strong></div>
+        <v-progress-linear :model-value="percentage(employee)" height="6" rounded color="primary" :aria-label="`${employee.name}: ${percentage(employee)}% completed`" />
+        <div class="employee-counts mt-2"><button @click="$emit('select', employee.id, '', employee.period)"><strong>{{ employee.total }}</strong><span>Assigned</span></button><button @click="$emit('select', employee.id, 'In Progress', employee.period)"><strong>{{ employee.in_progress }}</strong><span>In progress</span></button><button @click="$emit('select', employee.id, 'completed', employee.period)"><strong>{{ employee.completed }}</strong><span>Completed</span></button></div>
+        <div v-if="employee.id !== 'unassigned'" class="performance-note mt-2 text-caption text-medium-emphasis">{{ employee.completed_in_period }} completed in period · Average {{ duration(employee.average_hours) }}</div>
         <p v-if="employee.id !== 'unassigned' && employee.unattributed_in_period" class="text-caption text-medium-emphasis mt-2">{{ employee.unattributed_in_period }} earlier completion(s) have no recorded employee credit.</p>
         </template>
       </v-card>
@@ -67,14 +67,20 @@ const maxTrend = computed(() => Math.max(1, ...trendMonths.value.map(month => mo
 const trendDescription = computed(() => trendMonths.value.map(month => `${month.label}: ${month.count} completed`).join(', '));
 </script>
 <style scoped>
-.employee-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr)); gap:16px; }
+.employee-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr)); gap:12px; }
+.employee-card .card-heading { gap:6px; }
+.employee-card .employee-name { flex:1; min-width:0; gap:6px; }
+.employee-card .employee-name strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
+.employee-card .employee-name .text-caption { flex-shrink:0; }
+.employee-card :deep(.tracking-period-select) { padding:2px; gap:0; }
+.employee-card :deep(.tracking-period-select .v-btn) { min-width:0; padding-inline:6px; }
 .card-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .card-heading > :first-child { min-width:0; overflow-wrap:anywhere; }
 .card-heading :deep(.tracking-period-select) { flex-shrink:0; }
 .employee-name { display:flex; align-items:center; gap:10px; text-align:left; color:inherit; }
 .employee-counts { display:flex; justify-content:space-between; gap:8px; }
 .employee-counts button { display:flex; flex-direction:column; text-align:left; color:inherit; }
-.employee-counts strong { font-size:22px; } .employee-counts span { font-size:12px; opacity:.75; }
+.employee-counts strong { font-size:18px; } .employee-counts span { font-size:11px; opacity:.75; }
 .legend { display:flex; flex-wrap:wrap; gap:12px; font-size:12px; } .legend span { display:flex; align-items:center; gap:5px; } .legend i { width:8px; height:8px; border-radius:50%; }
 .workload-track { display:flex; height:26px; background:rgba(var(--v-theme-on-surface),.04); border-radius:20px; overflow:hidden; }
 .workload-track button { min-width:18px; font-size:12px; color:#172d27; overflow:hidden; }

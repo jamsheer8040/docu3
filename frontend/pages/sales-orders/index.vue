@@ -306,7 +306,7 @@
               no-data-text="No quotations available to convert"
               clearable
             />
-            <p class="text-body-2 text-medium-emphasis">Quotation details will fill the editable order. Saving creates an Unconfirmed sales order.</p>
+            <p class="text-body-2 text-medium-emphasis">Quotation details will fill the editable order. After saving, confirm or cancel each service item individually.</p>
             <v-alert v-if="quotationError" type="error" variant="tonal" class="mt-4">{{ quotationError }}</v-alert>
           </template>
         </v-card-text>
@@ -358,6 +358,10 @@ const serviceTypes = ref([])
 
 const dialogVisible = ref(false)
 const detailVisible = ref(false)
+useLinkedRecord('order_id', async id => (await $api.get(`/sales-orders/${id}`)).data.data, row => {
+  selectedOrder.value = row
+  detailVisible.value = true
+})
 const selectedOrder = ref(null)
 const orderToEdit = ref(null)
 const createSourceVisible = ref(false)

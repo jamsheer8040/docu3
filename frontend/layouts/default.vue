@@ -11,7 +11,7 @@
       class="bg-transparent"
       style="border-right: none !important;"
     >
-      <div class="pa-4 h-100 d-flex flex-column bg-transparent">
+      <div class="px-4 pt-4 pb-1 h-100 d-flex flex-column bg-transparent overflow-hidden">
           <div v-if="isSageShell" class="sage-brand">
             <NuxtLink to="/" class="sage-brand-home"><span class="sage-brand-mark"><v-icon icon="mdi-file-document" size="21" /></span><span>{{ configStore.appName }}</span></NuxtLink>
             <v-btn icon="mdi-chevron-double-left" size="small" variant="text" aria-label="Hide menu" title="Hide menu" @click="drawer = false" />
@@ -31,7 +31,7 @@
             </v-avatar>
           </div>
         
-        <div class="flex-grow-1 overflow-y-auto pr-1" style="scrollbar-width: thin;">
+        <div class="flex-grow-1 overflow-y-auto pr-1" style="scrollbar-width: thin; min-height: 0;">
 
         <v-list density="comfortable" nav class="pa-0 bg-transparent" @click="$vuetify.display.smAndDown ? (drawer = false) : null">
           <v-list-item
@@ -149,9 +149,9 @@
         </v-list>
         </div>
         
-        <div class="mt-auto border-t pt-4">
+        <div class="sidebar-footer mt-auto flex-shrink-0 border-t pt-1">
           <!-- All Companies (moved from top bar) -->
-          <div v-if="authStore.user?.role_type === 'CustomerPortal' && authStore.user?.LinkedCustomers?.length > 1" class="px-4 mb-4">
+          <div v-if="authStore.user?.role_type === 'CustomerPortal' && authStore.user?.LinkedCustomers?.length > 1" class="px-4 mb-1">
             <v-select
               v-model="authStore.activeCustomerFilter"
               :items="authStore.user.LinkedCustomers"
@@ -172,7 +172,7 @@
           </div>
 
           <!-- Bottom Icons -->
-          <div class="d-flex align-center justify-center pb-4 px-2" style="gap: 16px;">
+          <div class="d-flex align-center justify-center px-2" style="gap: 16px;">
             <!-- 1. Help Dialog -->
             <v-btn icon="mdi-help-circle-outline" variant="text" size="small" @click="helpDialog = true"></v-btn>
 
@@ -245,8 +245,8 @@
             </v-menu>
           </div>
           
-          <div class="text-center pb-2">
-              <div class="text-overline text-grey opacity-60" style="font-size: calc(.6rem - var(--dashboard-font-reduction, 0px)) !important;">{{ configStore.appName }} v1.1.0</div>
+          <div class="text-center">
+              <div class="text-overline text-grey opacity-60" style="font-size: calc(.6rem - var(--dashboard-font-reduction, 0px)) !important; line-height: 16px;">{{ configStore.appName }} v1.1.0</div>
           </div>
         </div>
       </div>

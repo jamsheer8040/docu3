@@ -171,13 +171,14 @@
         :items="invoiceStore.invoices"
         :items-length="invoiceStore.totalInvoices"
         :loading="invoiceStore.loading"
+        :row-props="invoiceRowProps"
         @update:options="loadInvoices"
         class="bg-transparent elevation-0 custom-invoice-table"
         hover
       >
         <!-- Invoice Number -->
         <template v-slot:item.invoice_number="{ item }">
-          <span class="font-weight-bold text-primary cursor-pointer text-body-2" @click="viewInvoice(item)">
+          <span class="font-weight-bold text-primary cursor-pointer text-body-2" @click.stop="viewInvoice(item)">
             {{ item.invoice_number }}
           </span>
         </template>
@@ -203,6 +204,7 @@
             size="small"
             rounded="pill"
             class="px-3 font-weight-bold text-capitalize"
+            :class="{ 'invoice-status-paid': item.status === 'Paid', 'invoice-status-unpaid': ['Pending', 'Issued', 'Draft', 'Partially Paid', 'Overdue', 'Approved', 'Pending Approval'].includes(item.status) }"
             :color="getStatusColor(item.status)"
             variant="tonal"
             style="font-size: 11px; height: 24px;"
@@ -223,7 +225,9 @@
           <div class="d-inline-flex flex-column ga-1 py-2 mr-2" @click.stop>
             <DocumentExport v-if="auth.canRecord('invoices', 'detail', item)" remember size="small" :record-id="item.id" :types="[invoiceConfig.invoiceDocumentType]" :label="invoiceConfig.invoiceDocumentType === 'tax_invoice' ? 'Tax Invoice PDF' : 'Invoice PDF'" />
           </div>
-          <v-btn v-if="canEditInvoice(item)" icon="mdi-pencil-outline" variant="text" size="small" color="primary" title="Edit invoice" :loading="editingId === item.id" @click.stop="editInvoice(item)" />
+          <span class="invoice-edit-slot">
+            <v-btn v-if="canEditInvoice(item)" icon="mdi-pencil-outline" variant="text" size="small" color="primary" title="Edit invoice" :loading="editingId === item.id" @click.stop="editInvoice(item)" />
+          </span>
           <v-menu location="bottom end">
             <template v-slot:activator="{ props }">
               <v-btn icon="mdi-dots-horizontal" variant="text" size="small" color="grey-darken-1" v-bind="props"></v-btn>
@@ -490,6 +494,24 @@ const viewInvoice = (invoice) => {
     selectedInvoice.value = invoice;
     viewDialog.value = true;
 };
+const invoiceRowProps = ({ item }) => {
+    if (!auth.canRecord('invoices', 'detail', item)) return {};
+    return {
+        class: 'cursor-pointer',
+        tabindex: 0,
+        'aria-label': `View invoice ${item.invoice_number}`,
+        onClick: event => {
+            if (event.target.closest('a, button, input, select, textarea, [role="button"], [role="menuitem"]')) return;
+            viewInvoice(item);
+        },
+        onKeydown: event => {
+            if (event.target !== event.currentTarget || !['Enter', ' '].includes(event.key)) return;
+            event.preventDefault();
+            viewInvoice(item);
+        }
+    };
+};
+useLinkedRecord('invoice_id', id => invoiceStore.fetchInvoiceById(id), viewInvoice);
 
 const openCreateDialog = () => {
     editableInvoice.value = null;
@@ -576,6 +598,26 @@ const formatDate = (dateString) => {
 </script>
 
 <style>
+.custom-invoice-table .invoice-status-paid {
+  background: #e6f5e9 !important;
+  color: #2e7d46 !important;
+}
+.custom-invoice-table .invoice-status-unpaid {
+  background: #fff0dc !important;
+  color: #b7650a !important;
+}
+.custom-invoice-table .invoice-status-paid .v-chip__underlay,
+.custom-invoice-table .invoice-status-unpaid .v-chip__underlay {
+  opacity: 0 !important;
+}
+.custom-invoice-table .invoice-edit-slot {
+  display: inline-flex;
+  width: 40px;
+  min-width: 40px;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
 /* ==========================================================
    STRICT CLASSIC THEME — Invoices Page
    Scoped under .v-theme--classic only

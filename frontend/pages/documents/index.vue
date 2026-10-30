@@ -410,6 +410,7 @@
             </template>
 
             <template v-slot:item.actions="{ item }">
+              <v-btn v-if="auth.user?.role_type !== 'CustomerPortal' && auth.canRecord('documents', 'edit_form', item)" icon="mdi-email-outline" variant="text" color="primary" size="small" title="Email expiry reminder" aria-label="Email expiry reminder" :to="`/documents/email/${item.id}`" @click.stop />
               <v-btn 
                 variant="text" 
                 size="small" 
@@ -486,6 +487,7 @@
             </div>
 
             <div class="bg-grey-lighten-4 pa-2 d-flex justify-space-evenly align-center border-t rounded-b-xl">
+              <v-btn v-if="auth.user?.role_type !== 'CustomerPortal' && auth.canRecord('documents', 'edit_form', item)" icon="mdi-email-outline" variant="text" color="primary" size="small" title="Email expiry reminder" aria-label="Email expiry reminder" :to="`/documents/email/${item.id}`" @click.stop />
               <v-btn 
                 variant="text" 
                 size="small" 
@@ -576,6 +578,7 @@
           </v-card-text>
           <v-divider></v-divider>
           <v-card-actions>
+            <v-btn v-if="auth.user?.role_type !== 'CustomerPortal' && auth.canRecord('documents', 'edit_form', selectedDoc)" color="primary" prepend-icon="mdi-email-outline" :to="`/documents/email/${selectedDoc.id}`">Email reminder</v-btn>
             <v-btn 
               v-if="selectedDoc.Customer?.phone_whatsapp"
               color="success" 
@@ -913,6 +916,7 @@ const openDetails = (doc) => {
   selectedDoc.value = doc;
   detailsDialog.value = true;
 };
+useLinkedRecord('document_id', async id => (await useNuxtApp().$api.get(`/documents/${id}`)).data.data, openDetails);
 
 const editFromDetails = (doc) => {
   detailsDialog.value = false;

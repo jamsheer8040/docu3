@@ -5,13 +5,9 @@
         <div>
           <span class="text-h5 font-weight-black text-primary mr-3">{{ order.order_number }}</span>
           <v-chip size="small" color="secondary" variant="flat" class="font-weight-bold">{{ formatDate(order.order_date) }}</v-chip>
-          <v-chip v-if="order.source_quotation_id" size="small" class="ml-2" :color="order.confirmation_status === 'Confirmed' ? 'success' : order.confirmation_status === 'Cancelled' ? 'error' : 'warning'">{{ order.confirmation_status }}</v-chip>
+          <v-chip size="small" class="ml-2" :color="itemConfirmationSummary.color">{{ itemConfirmationSummary.label }}</v-chip>
         </div>
         <div class="d-flex align-center flex-wrap ga-2">
-          <template v-if="order.confirmation_status === 'Unconfirmed' && canEdit">
-            <v-btn color="success" variant="tonal" @click="orderAction = 'confirm'">Confirm Order</v-btn>
-            <v-btn color="error" variant="text" @click="orderAction = 'cancel'">Cancel Order</v-btn>
-          </template>
           <v-btn
             v-if="canEdit"
             color="primary"
@@ -109,8 +105,7 @@
                 </div>
               </td>
               <td class="text-end" style="min-width: 200px;">
-                <span v-if="order.confirmation_status === 'Unconfirmed'" class="text-caption">Confirm order first</span>
-                <span v-else-if="order.confirmation_status === 'Cancelled'" class="text-caption">Order cancelled</span>
+                <span v-if="order.confirmation_status === 'Cancelled'" class="text-caption">Order cancelled</span>
                 <template v-else-if="!item.service_order_id">
                   <template v-if="!item.confirmed && !item.cancelled && canEdit">
                     <v-btn
@@ -429,12 +424,6 @@
       <v-card-actions class="pa-4"><v-spacer /><v-btn :disabled="!!pushing" @click="pushDialog = false">Cancel</v-btn><v-btn color="primary" variant="tonal" :loading="!!pushing" @click="pushService">Push to Service</v-btn></v-card-actions>
     </v-card>
   </v-dialog>
-  <v-dialog :model-value="!!orderAction" max-width="450" :persistent="savingOrderAction" @update:model-value="value => { if (!value && !savingOrderAction) orderAction = '' }">
-    <v-card rounded="xl" class="pa-5"><h3 class="text-h6">{{ orderAction === 'confirm' ? 'Confirm sales order?' : 'Cancel sales order?' }}</h3>
-      <p class="my-4">{{ orderAction === 'confirm' ? 'Confirm the business and create or link the customer. Services will remain unstarted.' : 'Keep this order as cancelled. No customer, service or wallet transaction will be created.' }}</p>
-      <div class="d-flex justify-end ga-2"><v-btn :disabled="savingOrderAction" @click="orderAction = ''">Back</v-btn><v-btn :color="orderAction === 'cancel' ? 'error' : 'success'" :loading="savingOrderAction" @click="applyOrderAction">{{ orderAction === 'confirm' ? 'Confirm Order' : 'Cancel Order' }}</v-btn></div>
-    </v-card>
-  </v-dialog>
 </template>
 
 <script setup>
@@ -454,13 +443,14 @@ const props = defineProps({
   order: Object
 })
 const canEdit = computed(() => props.order && props.order.confirmation_status !== 'Cancelled' && auth.canRecord('sales_orders', 'edit', props.order))
-const orderAction = ref(''), savingOrderAction = ref(false)
-const applyOrderAction = async () => {
-  savingOrderAction.value = true
-  try { await $api.post(`/sales-orders/${props.order.id}/confirmation`, { action: orderAction.value }); orderAction.value = ''; emit('refresh'); uiStore.showSuccess('Sales order updated.') }
-  catch (error) { uiStore.showError(error.response?.data?.message || 'Unable to update the sales order.') }
-  finally { savingOrderAction.value = false }
-}
+const itemConfirmationSummary = computed(() => {
+  const items = props.order?.SalesOrderItems || []
+  if (props.order?.confirmation_status === 'Cancelled' || (items.length && items.every(item => item.cancelled))) return { label: 'Cancelled', color: 'error' }
+  const active = items.filter(item => !item.cancelled)
+  const confirmed = active.filter(item => item.confirmed).length
+  if (active.length && confirmed === active.length) return { label: 'Confirmed', color: 'success' }
+  return { label: confirmed ? 'Partially confirmed' : 'Awaiting item confirmation', color: 'warning' }
+})
 const bankDetailsText = computed(() => [['bank_name','Bank'],['account_name','Account name'],['account_number','Account number'],['iban','IBAN'],['swift','SWIFT / BIC'],['branch','Branch']].filter(([key]) => props.order?.bank_details?.[key]).map(([key,label]) => `${label}: ${props.order.bank_details[key]}`).join('\n'))
 
 const emit = defineEmits(['update:modelValue', 'refresh', 'edit'])

@@ -32,7 +32,7 @@
 
     <v-divider></v-divider>
 
-    <v-card-actions class="px-3 py-2 d-flex justify-space-between">
+    <v-card-actions class="px-3 py-2 d-flex justify-space-between flex-wrap ga-1">
         <div>
           <v-btn
             v-if="document.file_path"
@@ -62,6 +62,7 @@
            title="Delete Document"
          ></v-btn>
        </div>
+       <v-btn v-if="auth.user?.role_type !== 'CustomerPortal' && auth.canRecord('documents', 'edit_form', document)" icon="mdi-email-outline" variant="text" color="primary" size="small" title="Email expiry reminder" aria-label="Email expiry reminder" :to="`/documents/email/${document.id}`" @click.stop />
        <v-btn
         v-if="document.Customer?.phone_whatsapp && auth.user?.role_type !== 'CustomerPortal'"
         color="primary"
@@ -145,7 +146,7 @@ const sendReminder = async () => {
   const num = props.document.Customer.phone_whatsapp;
   const msg = MESSAGES.docReminder(
     props.document.Customer.name,
-    document.DocumentType?.name || props.document.type,
+    props.document.DocumentType?.name || props.document.type,
     props.document.doc_number || 'N/A',
     formatDate(props.document.expiry_date)
   );

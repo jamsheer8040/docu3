@@ -295,7 +295,7 @@
     <!-- KANBAN VIEW                            -->
     <!-- ═══════════════════════════════════════ -->
     <div v-if="viewMode === 'kanban'" class="kanban-board mb-6">
-      <div class="d-flex overflow-x-auto pb-4 gap-4" style="min-height: 520px;">
+      <div class="d-flex overflow-x-auto pb-4 gap-2" style="min-height: 520px;">
         <div
           v-for="column in kanbanColumns"
           :key="column"
@@ -741,12 +741,12 @@ onMounted(() => {
 }
 
 .kanban-column {
-  min-width: 300px;
-  max-width: 300px;
+  min-width: 284px;
+  max-width: 284px;
   background: transparent;
   border: none;
   border-radius: 24px;
-  padding: 16px;
+  padding: 16px 8px;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -763,6 +763,7 @@ onMounted(() => {
 }
 
 .kanban-card {
+  border-radius: 12px !important;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 

@@ -8,13 +8,7 @@
         <div class="sage-periods" aria-label="Statistics period">
           <button v-for="period in periods" :key="period.value" :class="{ selected: selectedPeriod === period.value }" :aria-pressed="selectedPeriod === period.value" :disabled="store.loading" @click="changePeriod(period.value)">{{ period.label }}</button>
         </div>
-        <div class="sage-search">
-          <DashboardIcon icon="mdi-magnify" size="21" /><input v-model="search" aria-label="Search pages" placeholder="Search anything…" @keydown.esc="search = ''" />
-          <div v-if="search.trim()" class="sage-search-results">
-            <NuxtLink v-for="item in searchResults" :key="item.to" :to="item.to">{{ item.label }} <DashboardIcon icon="mdi-arrow-top-right" size="16" /></NuxtLink>
-            <p v-if="!searchResults.length">No matching pages</p>
-          </div>
-        </div>
+        <GlobalRecordSearch />
         <v-menu location="bottom end"><template #activator="{ props }"><button v-bind="props" class="sage-icon-button sage-bell" aria-label="Document notifications"><DashboardIcon icon="mdi-bell-outline" /><span v-if="alerts.length" class="notification-dot" /></button></template><v-list><v-list-item title="Document alerts" subtitle="Upcoming and overdue expiries" /><v-list-item v-if="!alerts.length" title="You're all caught up" /><v-list-item v-for="doc in alerts.slice(0, 5)" :key="doc.id" :title="doc.Customer?.name || 'Document'" :subtitle="expiryLabel(doc.days_remaining)" to="/documents" /></v-list></v-menu>
         <v-menu location="bottom end"><template #activator="{ props }"><button v-bind="props" class="sage-profile" aria-label="Open profile menu"><span>{{ initials }}</span><DashboardIcon icon="mdi-chevron-down" size="18" /></button></template><v-list><v-list-item :title="auth.user?.name || auth.user?.email || 'My account'" /><v-list-item title="My Profile" to="/profile" /><v-list-item v-if="auth.can('settings')" title="Settings" to="/settings" /><v-list-item title="Sign out" @click="logout" /></v-list></v-menu>
       </div>
@@ -75,6 +69,7 @@
 
 <script setup>
 import DashboardIcon from '~/components/dashboard/DashboardIcon.vue';
+import GlobalRecordSearch from '~/components/search/GlobalRecordSearch.vue';
 import { computed, ref, inject, resolveComponent } from 'vue';
 import dayjs from 'dayjs';
 import { dashboardReportLink } from '~/utils/dashboardReports';
@@ -123,17 +118,6 @@ const statuses = [
   { key: 'CompletedInvoiceCreated', label: 'Invoice Created', icon: 'mdi-check-circle', color: 'green' },
   { key: 'Cancelled', label: 'Cancelled', icon: 'mdi-close-circle', color: 'red' }
 ];
-const search = ref('');
-const pages = [
-  { label: 'Dashboard', to: '/', permission: 'dashboard' }, { label: 'Customers', to: '/customers', permission: 'customers' },
-  { label: 'Leads', to: '/leads', permission: 'customers' }, { label: 'Purchases', to: '/purchases', permission: 'suppliers' }, { label: 'Suppliers', to: '/suppliers', permission: 'suppliers' },
-  { label: 'Documents', to: '/documents', permission: 'documents' }, { label: 'Sales Orders', to: '/sales-orders', permission: 'sales_orders' },
-  { label: 'Services', to: '/services', permission: 'services' }, { label: 'Invoices', to: '/invoices', permission: 'invoices' },
-  { label: 'Expenses', to: '/expenses', permission: 'expenses' }, { label: 'Wallet', to: '/wallet', permission: 'wallet' },
-  { label: 'Management', to: '/management', permission: 'management' }, { label: 'Tools', to: '/tools', permission: 'tools' },
-  { label: 'Settings', to: '/settings', permission: 'settings' }, { label: 'Reports & Analytics', to: '/reports', permission: 'reports' }
-];
-const searchResults = computed(() => pages.filter(item => auth.can(item.permission) && item.label.toLowerCase().includes(search.value.trim().toLowerCase())).slice(0, 6));
 const today = dayjs();
 const calendarMonth = ref(today.startOf('month'));
 const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -219,7 +203,7 @@ const expiryLabel = days => Number(days) < 0 ? `${Math.abs(Number(days))} Days O
 .sage-wallet-logo img { width:100%; height:100%; object-fit:contain; padding:3px; background:white; }
 .sage-wallet-total { font-size:28px; font-weight:600; letter-spacing:-1px; }.sage-empty { text-align:center; margin:0 auto; color:#8b9fa6; }.sage-empty h3,.sage-alert-empty h3 { font-size:14px; color:var(--sage-ink); margin:7px 0 4px; font-weight:500; }.sage-empty p,.sage-alert-empty p { color:var(--sage-muted); font-size:12px; margin:0; }.wallet-empty { margin-top:-25px; }.sage-primary-link { display:inline-flex; align-items:center; gap:9px; padding:11px 26px; border-radius:12px; color:white !important; margin-top:12px; font-size:12px; background:linear-gradient(150deg,rgba(var(--v-theme-primary),.85),rgb(var(--v-theme-primary))); box-shadow:0 5px 12px rgba(var(--v-theme-primary),.17); }
 .sage-records { margin-top:12px; }.sage-records a { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid rgba(var(--v-theme-primary),.07); font-size:11px; }.sage-records strong { font-weight:500; }.sage-records small { display:block; color:var(--sage-muted); margin-top:3px; }.sage-records span { color:var(--sage-muted); }
-.sage-calendar { padding:16px; }.sage-calendar .sage-icon { width:34px; height:34px; border-radius:10px; }.sage-calendar .sage-card-heading { gap:7px; }.sage-calendar h2 { font-size:15px; white-space:nowrap; }.sage-calendar .sage-icon-button { width:29px; height:29px; }.sage-calendar-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px; margin-top:11px; text-align:center; }.sage-weekday { font-size:11px; color:var(--sage-muted); padding:3px 0; }.sage-day { display:grid; place-items:center; height:34px; background:rgba(var(--v-theme-primary),.035); border-radius:12px; font-size:13px; position:relative; }.sage-day.today { background:linear-gradient(145deg,rgba(var(--v-theme-primary),.8),rgb(var(--v-theme-primary))); color:white; box-shadow:0 3px 7px rgba(var(--v-theme-primary),.2); }.sage-day.blank { color:transparent; }.sage-day.has-expiry::after { content:''; position:absolute; bottom:3px; width:4px; height:4px; background:#fa8e35; border-radius:50%; }
+.sage-calendar { padding:16px; }.sage-calendar .sage-icon { width:34px; height:34px; border-radius:10px; }.sage-calendar .sage-card-heading { gap:7px; }.sage-calendar h2 { font-size:15px; white-space:nowrap; }.sage-calendar .sage-icon-button { width:29px; height:29px; }.sage-calendar-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px; margin-top:11px; text-align:center; }.sage-weekday { font-size:11px; color:var(--sage-muted); padding:3px 0; }.sage-day { display:grid; place-items:center; height:34px; background:rgba(var(--v-theme-primary),.035); border-radius:12px; font-size:13px; position:relative; }.sage-day.today { background:linear-gradient(145deg,rgba(var(--v-theme-primary),.8),rgb(var(--v-theme-primary))); color:white; box-shadow:0 3px 7px rgba(var(--v-theme-primary),.2); }.sage-day.blank { color:transparent; }.sage-day.has-expiry::after { content:''; position:absolute; inset:0; border:2px solid #fa8e35; border-radius:inherit; pointer-events:none; }
 .sage-expiries { padding:14px 12px; margin-top:16px; }.sage-expiries .sage-card-heading { margin:0 3px 12px; }.sage-expiries h2 { font-size:20px; }.sage-alert-icon { color:#ff3248; }.sage-alert-summary { display:flex; justify-content:space-between; align-items:center; padding:19px; background:linear-gradient(130deg,rgba(255,61,80,.08),rgba(255,61,80,.055)); border-radius:14px; }.sage-alert-summary p { font-size:13px; color:#f82f45; margin-bottom:5px; }.sage-alert-summary strong { font-size:39px; line-height:1.2; font-weight:600; }.sage-alert-summary span { margin-left:9px; color:var(--sage-muted); }.sage-alert-summary > .dashboard-icon { color:rgba(220,90,105,.17); }.sage-alert-list a { display:flex; align-items:center; gap:10px; padding:16px 7px; border-bottom:1px solid rgba(var(--v-theme-primary),.07); font-size:11px; }.sage-alert-list i { width:9px; height:9px; background:#ff9b0a; border-radius:50%; flex-shrink:0; }.sage-alert-list span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.sage-alert-list small { display:block; margin-top:4px; color:var(--sage-muted); }.sage-alert-list em { font-style:normal; font-size:10px; white-space:nowrap; color:var(--sage-muted); }.sage-alert-list i.overdue { background:#ff3248; }.sage-alert-list em.overdue { color:#f82f45; }.sage-alert-empty { text-align:center; padding:28px 8px; color:rgb(var(--v-theme-primary)); }.sage-error { margin-bottom:12px; padding:12px; border-radius:14px; background:#fff0f1; color:#9b2638; font-size:13px; }.sage-error button { text-decoration:underline; margin-left:12px; }
 @media (min-width:1700px) { .sage-layout { grid-template-columns:minmax(0,1fr) 360px; }.sage-metrics { grid-template-columns:1fr 1.12fr 1fr; }.sage-kpi { min-height:149px; }.sage-bottom-panel { min-height:270px; }.sage-calendar .sage-day { height:36px; } }
 @media (max-width:1450px) { .sage-dashboard { padding:20px 18px; }.sage-layout { grid-template-columns:minmax(0,1fr) 280px; }.sage-header { flex-wrap:wrap; }.sage-header-actions { margin-left:auto; }.sage-finance { padding:15px 13px; }.sage-card-heading { gap:7px; }.sage-card-heading h2 { font-size:14px; }.sage-amount { font-size:30px; }.sage-amount > span { font-size:19px; }.sage-kpi { min-height:138px; }.sage-kpi-label { font-size:10px; }.sage-status { padding:13px 10px; gap:7px; }.sage-status .sage-icon { width:34px; height:34px; }.sage-status .sage-icon .dashboard-icon { font-size:17.5px !important; }.sage-status > div > span { font-size:10px; }.sage-bottom-panel h2,.sage-expiries h2 { font-size:17px; }.sage-calendar h2 { font-size:13px; }.sage-calendar { padding:12px; } }

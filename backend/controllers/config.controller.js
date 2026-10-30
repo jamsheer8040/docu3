@@ -45,6 +45,8 @@ exports.getConfigs = async (req, res) => {
     });
     const configMap = { theme_name: 'sage', commission_enabled: true };
     configs.forEach(c => {
+      // SMTP credentials and options are available only through the protected email settings API.
+      if (c.key.startsWith('smtp_') || c.key.startsWith('email_auto_')) return;
       try {
         configMap[c.key] = JSON.parse(c.value);
       } catch (e) {
@@ -62,6 +64,9 @@ exports.getConfigs = async (req, res) => {
 exports.updateConfigs = async (req, res) => {
   try {
     const settings = req.body;
+    if (Object.keys(settings).some(key => key.startsWith('smtp_') || key.startsWith('email_auto_'))) {
+      return res.status(400).json({ success: false, message: 'Use Settings → Email to update email configuration.' });
+    }
     if (['commission_enabled','commission_activation'].some(key=>Object.prototype.hasOwnProperty.call(settings,key))) {
       return res.status(400).json({success:false,message:'Use the confirmed commission master switch to change commission availability.'});
     }

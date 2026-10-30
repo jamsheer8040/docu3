@@ -24,8 +24,8 @@ async function getSmtpConfig(tenantId) {
 /**
  * Create a Nodemailer transporter for a given tenant
  */
-async function getTransporter(tenantId) {
-  const smtp = await getSmtpConfig(tenantId);
+async function getTransporter(tenantId, settings) {
+  const smtp = settings || await getSmtpConfig(tenantId);
   if (!smtp) return null;
 
   return nodemailer.createTransport({
@@ -36,7 +36,12 @@ async function getTransporter(tenantId) {
       user: smtp.smtp_user,
       pass: smtp.smtp_pass
     },
-    tls: { rejectUnauthorized: false }
+    requireTLS: smtp.smtp_secure !== 'true',
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000,
+    disableFileAccess: true,
+    disableUrlAccess: true
   });
 }
 
@@ -53,36 +58,27 @@ function renderTemplate(html, data = {}) {
  * Core send function
  * @param {Object} opts - { tenantId, to, subject, html, templateType, sentBy }
  */
-async function sendEmail({ tenantId, to, subject, html, templateType = 'manual', sentBy = null }) {
-  const transporter = await getTransporter(tenantId);
+async function sendEmail({ tenantId, to, cc = [], subject, html, text, templateType = 'manual', sentBy = null }) {
+  const smtp = await getSmtpConfig(tenantId);
+  const transporter = smtp ? await getTransporter(tenantId, smtp) : null;
   if (!transporter) {
     console.warn(`[EmailService] No SMTP config for tenant ${tenantId}. Email not sent.`);
     return { success: false, message: 'SMTP not configured' };
   }
 
-  const smtp = await getSmtpConfig(tenantId);
   const fromAddress = smtp.smtp_from_email || smtp.smtp_user;
   const fromName = smtp.smtp_from_name || 'DocClear';
 
+  let info;
   try {
-    await transporter.sendMail({
-      from: `"${fromName}" <${fromAddress}>`,
+    info = await transporter.sendMail({
+      from: { name: fromName, address: fromAddress },
       to,
+      cc,
       subject,
-      html
+      html,
+      text
     });
-
-    await EmailLog.create({
-      tenant_id: tenantId,
-      recipient: to,
-      subject,
-      template_type: templateType,
-      status: 'sent',
-      sent_by: sentBy
-    });
-
-    console.log(`[EmailService] Email sent to ${to} (tenant: ${tenantId})`);
-    return { success: true };
   } catch (err) {
     console.error('[EmailService] Send failed:', err.message);
     await EmailLog.create({
@@ -93,9 +89,14 @@ async function sendEmail({ tenantId, to, subject, html, templateType = 'manual',
       status: 'failed',
       error_message: err.message,
       sent_by: sentBy
-    });
+    }).catch(logError => console.error('[EmailService] Could not save failure log:', logError.message));
     return { success: false, message: err.message };
   }
+  // SMTP has accepted the message: a logging failure must not invite duplicate sends.
+  let logged = true;
+  await EmailLog.create({ tenant_id: tenantId, recipient: to, subject, template_type: templateType, status: 'sent', sent_by: sentBy })
+    .catch(error => { logged = false; console.error('[EmailService] Could not save sent log:', error.message); });
+  return { success: true, ...(info?.rejected?.length ? { message: 'Email sent, but some recipients were rejected by the mail server.', rejected: info.rejected } : !logged ? { message: 'Email sent, but its delivery log could not be saved.' } : {}) };
 }
 
 /**

@@ -4,6 +4,7 @@ const { resolveAssignee, recordAssignment, eligibleStaff } = require('../utils/s
 const { trackingFilters, summarizePerformance, completedStatuses } = require('../utils/employeePerformance');
 const { actionScope, canRecord } = require('../utils/permissionRules');
 const { internalRead } = require('../utils/recordAccess');
+const serviceInvoiceAttributes = ['id', 'invoice_number', 'status', 'payment_status', 'total', 'paid_amount'];
 // Report permission is independent of Services permissions. Every report read
 // uses an explicit tenant boundary and the logged-in employee for Own access.
 const trackingOwn = req => actionScope(req.user, 'employee_tracking', 'list') === 'own';
@@ -225,6 +226,10 @@ exports.getServiceOrders = async (req, res, next) => {
 
     const where = { tenant_id: req.user.tenant_id };
     if (status) where.status = status;
+    if (req.query.service_id) {
+      if (!/^\d+$/.test(String(req.query.service_id))) return res.status(400).json({ success: false, message: 'Invalid service filter.' });
+      where.id = req.query.service_id;
+    }
     if (req.query.tracking === 'true') {
       const filters = trackingFilters(req.query);
       if (filters.service_type_id) where.service_type_id = filters.service_type_id;
@@ -265,7 +270,7 @@ exports.getServiceOrders = async (req, res, next) => {
           attributes: ['id', 'name', 'pricing_mode', 'cost_price'],
           include: [{ model: ServiceTypePricing }]
         },
-        { model: Invoice, attributes: ['id', 'invoice_number', 'status'] }
+        { model: Invoice, attributes: serviceInvoiceAttributes }
       ],
       limit: parseInt(limit),
       offset: parseInt(offset),
@@ -326,7 +331,7 @@ exports.createServiceOrder = async (req, res, next) => {
     const fullOrder = await ServiceOrder.findOne({ where: { id: order.id, tenant_id: req.user.tenant_id }, include: [
       { model: Customer, attributes: ['id', 'name', 'phone_whatsapp'] }, ...staffInclude(req),
       { model: ServiceType, attributes: ['id', 'name', 'pricing_mode', 'cost_price'], include: [{ model: ServiceTypePricing }] },
-      { model: Invoice, attributes: ['id', 'invoice_number', 'status'] }
+      { model: Invoice, attributes: serviceInvoiceAttributes }
     ] });
     res.status(201).json({ success: true, data: fullOrder });
   } catch (error) { next(error); }
@@ -491,7 +496,7 @@ exports.updateServiceOrderStatus = async (req, res, next) => {
           attributes: ['id', 'name', 'pricing_mode', 'cost_price'],
           include: [{ model: ServiceTypePricing }]
         },
-        { model: Invoice, attributes: ['id', 'invoice_number', 'status'] }
+        { model: Invoice, attributes: serviceInvoiceAttributes }
       ]
     });
 
@@ -593,7 +598,7 @@ exports.updateServiceOrder = async (req, res, next) => {
     const fullOrder = await ServiceOrder.findOne({ where: { id: req.params.id, tenant_id: req.user.tenant_id }, include: [
       { model: Customer, attributes: ['id', 'name', 'phone_whatsapp'] }, ...staffInclude(req),
       { model: ServiceType, attributes: ['id', 'name', 'pricing_mode', 'cost_price'], include: [{ model: ServiceTypePricing }] },
-      { model: Invoice, attributes: ['id', 'invoice_number', 'status'] }
+      { model: Invoice, attributes: serviceInvoiceAttributes }
     ] });
     res.json({ success: true, data: fullOrder, message: 'Service order updated successfully' });
   } catch (error) { next(error); }
